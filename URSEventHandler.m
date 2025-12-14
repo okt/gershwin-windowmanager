@@ -66,6 +66,8 @@
 - (void) startEventHandlerLoop
 {
     xcb_generic_event_t *e;
+    xcb_motion_notify_event_t *lastMotionEvent = NULL;
+    BOOL needFlush = NO;
 
     while ((e = xcb_wait_for_event([connection connection])))
     {
@@ -73,86 +75,78 @@
         {
             case XCB_VISIBILITY_NOTIFY:
             {
-                //NSLog(@"");
                 xcb_visibility_notify_event_t *visibilityEvent = (xcb_visibility_notify_event_t *) e;
-                //NSLog(@"Visibility Event for window: %u", visibilityEvent->window);
                 [connection handleVisibilityEvent:visibilityEvent];
                 break;
             }
             case XCB_EXPOSE:
             {
-                //NSLog(@"");
                 xcb_expose_event_t *exposeEvent = (xcb_expose_event_t *) e;
-                //NSLog(@"Expose for window %u", exposeEvent->window);
                 [connection handleExpose:exposeEvent];
-                [connection flush];
-                [connection setNeedFlush:NO];
+                needFlush = YES;
                 break;
             }
             case XCB_MOTION_NOTIFY:
             {
-                //NSLog(@"");
-                xcb_motion_notify_event_t *motionEvent = (xcb_motion_notify_event_t *) e;
-                //NSLog(@"Motion Notify for window %u: ", motionEvent->event);
-                [connection handleMotionNotify:motionEvent];
-                [connection flush];
-                [connection setNeedFlush:NO];
+                // Motion event compression: save the latest motion event
+                if (lastMotionEvent) {
+                    free(lastMotionEvent);
+                }
+                lastMotionEvent = malloc(sizeof(xcb_motion_notify_event_t));
+                memcpy(lastMotionEvent, e, sizeof(xcb_motion_notify_event_t));
+
+                // Check if more events are queued - if so, skip processing this one
+                xcb_generic_event_t *nextEvent = xcb_poll_for_event([connection connection]);
+                if (nextEvent) {
+                    // There's another event queued, defer motion processing
+                    free(e);
+                    e = nextEvent;
+                    continue; // Process the next event instead
+                } else {
+                    // No more events, process the motion
+                    [connection handleMotionNotify:lastMotionEvent];
+                    needFlush = YES;
+                    free(lastMotionEvent);
+                    lastMotionEvent = NULL;
+                }
                 break;
             }
             case XCB_ENTER_NOTIFY:
             {
-                //NSLog(@"");
                 xcb_enter_notify_event_t *enterEvent = (xcb_enter_notify_event_t *) e;
-                //NSLog(@"Enter notify for window %u", enterEvent->event);
                 [connection handleEnterNotify:enterEvent];
-                [connection flush];
                 break;
             }
             case XCB_LEAVE_NOTIFY:
             {
-                //NSLog(@"");
                 xcb_leave_notify_event_t *leaveEvent = (xcb_leave_notify_event_t *) e;
-                //NSLog(@"Leave notify for window %u", leaveEvent->event);
                 [connection handleLeaveNotify:leaveEvent];
-                [connection flush];
                 break;
             }
             case XCB_FOCUS_IN:
             {
-                //NSLog(@"");
                 xcb_focus_in_event_t *focusInEvent = (xcb_focus_in_event_t *) e;
-                //NSLog(@"Focus In Event for window %u", focusInEvent->event);
                 [connection handleFocusIn:focusInEvent];
-                [connection flush];
                 break;
             }
             case XCB_FOCUS_OUT:
             {
-                //NSLog(@"");
                 xcb_focus_out_event_t *focusOutEvent = (xcb_focus_out_event_t *) e;
-                //NSLog(@"Focus Out Event for window %u", focusOutEvent->event);
                 [connection handleFocusOut:focusOutEvent];
-                [connection flush];
                 break;
             }
             case XCB_BUTTON_PRESS:
             {
-                //NSLog(@"");
                 xcb_button_press_event_t *pressEvent = (xcb_button_press_event_t *) e;
-                //NSLog(@"Button Press Event for window %u: ", pressEvent->event);
                 [connection handleButtonPress:pressEvent];
-                [connection flush];
-                [connection setNeedFlush:NO];
+                needFlush = YES;  // Button press important for responsiveness
                 break;
             }
             case XCB_BUTTON_RELEASE:
             {
-                //NSLog(@"");
                 xcb_button_release_event_t *releaseEvent = (xcb_button_release_event_t *) e;
-                // NSLog(@"Button Release Event for window %u: ", releaseEvent->event);
                 [connection handleButtonRelease:releaseEvent];
-                [connection flush];
-                [connection setNeedFlush:NO];
+                needFlush = YES;  // Button release important for responsiveness
                 break;
             }
             case XCB_MAP_NOTIFY:
@@ -165,74 +159,61 @@
             }
             case XCB_MAP_REQUEST:
             {
-                //NSLog(@"");
                 xcb_map_request_event_t *mapRequestEvent = (xcb_map_request_event_t *) e;
-                //NSLog(@"Map Request for window %u", mapRequestEvent->window);
                 [connection handleMapRequest:mapRequestEvent];
-                [connection flush];
-                [connection setNeedFlush:NO];
+                needFlush = YES;
                 break;
             }
             case XCB_UNMAP_NOTIFY:
             {
-                //NSLog(@"");
                 xcb_unmap_notify_event_t *unmapNotifyEvent = (xcb_unmap_notify_event_t *) e;
-                //NSLog(@"Unmap Notify for window %u", unmapNotifyEvent->window);
                 [connection handleUnMapNotify:unmapNotifyEvent];
                 break;
             }
             case XCB_DESTROY_NOTIFY:
             {
-                //NSLog(@"");
                 xcb_destroy_notify_event_t *destroyNotify = (xcb_destroy_notify_event_t *) e;
-                //NSLog(@"Destroy Notify for window: %u", destroyNotify->window);
                 [connection handleDestroyNotify:destroyNotify];
-                [connection flush];
-                [connection setNeedFlush:NO];
+                needFlush = YES;
                 break;
             }
             case XCB_CLIENT_MESSAGE:
             {
-                //NSLog(@"");
                 xcb_client_message_event_t *clientMessageEvent = (xcb_client_message_event_t *)e;
-                //NSLog(@"Cient message event: %u", clientMessageEvent->window);
                 [connection handleClientMessage:clientMessageEvent];
-                [connection flush];
-                [connection setNeedFlush:NO];
+                needFlush = YES;
                 break;
             }
             case XCB_CONFIGURE_REQUEST:
             {
-                //NSLog(@"");
                 xcb_configure_request_event_t *configRequest = (xcb_configure_request_event_t *) e;
-                //NSLog(@"Configure request for window %u", configRequest->window);
                 [connection handleConfigureWindowRequest:configRequest];
-                [connection flush];
-                [connection setNeedFlush:NO];
+                needFlush = YES;
                 break;
             }
             case XCB_CONFIGURE_NOTIFY:
             {
-                //NSLog(@"");
                 xcb_configure_notify_event_t *configureNotify = (xcb_configure_notify_event_t *) e;
-                //NSLog(@"Configure notify for window %u", configureNotify->window);
                 [connection handleConfigureNotify:configureNotify];
-                [connection flush];
-                [connection setNeedFlush:NO];
                 break;
             }
             case XCB_PROPERTY_NOTIFY:
             {
-                //NSLog(@"");
                 xcb_property_notify_event_t *propEvent = (xcb_property_notify_event_t *) e;
                 [connection handlePropertyNotify:propEvent];
-                [connection flush];
-                //NSLog(@"Window %u notify property change", propEvent->window);
                 break;
             }
             default:
                 break;
         }
+
+        // Batched flush: only flush when needed and at end of event processing
+        if (needFlush) {
+            [connection flush];
+            [connection setNeedFlush:NO];
+            needFlush = NO;
+        }
+
         free(e);
     }
 
