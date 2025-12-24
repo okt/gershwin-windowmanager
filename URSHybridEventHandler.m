@@ -280,10 +280,8 @@
             // Let XCBConnection handle the map request normally (this creates titlebar structure)
             [connection handleMapRequest:mapRequestEvent];
 
-            // Immediately apply GSTheme after XCBConnection creates the structure
-            [self performSelector:@selector(applyGSThemeToRecentlyMappedWindow:)
-                       withObject:[NSNumber numberWithUnsignedInt:mapRequestEvent->window]
-                       afterDelay:0.05]; // Very short delay
+            // Apply GSTheme immediately with no delay
+            [self applyGSThemeToRecentlyMappedWindow:[NSNumber numberWithUnsignedInt:mapRequestEvent->window]];
             break;
         }
         case XCB_UNMAP_NOTIFY: {

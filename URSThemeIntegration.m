@@ -99,9 +99,11 @@ static URSThemeIntegration *sharedInstance = nil;
         // Define the titlebar rect
         NSRect titlebarRect = NSMakeRect(0, 0, titlebarSize.width, titlebarSize.height);
 
-        // Use GSTheme to draw titlebar decoration
-        NSUInteger styleMask = NSTitledWindowMask | NSClosableWindowMask | NSResizableWindowMask;
+        // Use GSTheme to draw titlebar decoration with all button types
+        NSUInteger styleMask = NSTitledWindowMask | NSClosableWindowMask | NSMiniaturizableWindowMask | NSResizableWindowMask;
         GSThemeControlState state = isActive ? GSThemeNormalState : GSThemeSelectedState;
+
+        NSLog(@"Drawing GSTheme titlebar with styleMask: 0x%lx, state: %d", (unsigned long)styleMask, (int)state);
 
         // Draw the window titlebar using GSTheme
         [theme drawWindowBorder:titlebarRect
@@ -291,10 +293,12 @@ static URSThemeIntegration *sharedInstance = nil;
         [[NSColor clearColor] set];
         NSRectFill(NSMakeRect(0, 0, titlebarSize.width, titlebarSize.height));
 
-        // Use GSTheme to draw titlebar decoration
+        // Use GSTheme to draw titlebar decoration with all button types
         NSRect drawRect = NSMakeRect(0, 0, titlebarSize.width, titlebarSize.height);
-        NSUInteger styleMask = NSTitledWindowMask | NSClosableWindowMask | NSResizableWindowMask;
+        NSUInteger styleMask = NSTitledWindowMask | NSClosableWindowMask | NSMiniaturizableWindowMask | NSResizableWindowMask;
         GSThemeControlState state = isActive ? GSThemeNormalState : GSThemeSelectedState;
+
+        NSLog(@"Drawing standalone GSTheme titlebar with styleMask: 0x%lx, state: %d", (unsigned long)styleMask, (int)state);
 
         // Draw the window titlebar using GSTheme
         [theme drawWindowBorder:drawRect
@@ -383,8 +387,13 @@ static URSThemeIntegration *sharedInstance = nil;
 
     _enabled = enabled;
 
+    // Set user default to inform XCBKit about GSTheme status
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    [defaults setBool:enabled forKey:@"UROSWMGSThemeEnabled"];
+    [defaults synchronize];
+
     if (enabled) {
-        NSLog(@"GSTheme integration enabled");
+        NSLog(@"GSTheme integration enabled - XCBKit will skip Cairo button drawing");
         // Don't call refreshAllTitlebars here - let the periodic timer handle it
     } else {
         NSLog(@"GSTheme integration disabled - falling back to Cairo rendering");
