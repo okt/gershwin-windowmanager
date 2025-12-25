@@ -101,6 +101,64 @@
                       state:state
                    andTitle:title ?: @""];
 
+    // Add properly positioned buttons using Rik theme specifications
+    // Based on Rik theme analysis: 17px spacing, LEFT-aligned (miniaturize first, then close)
+    float buttonSize = 13.0;
+    float buttonSpacing = 17.0;  // Rik theme uses 17px spacing per button
+    float topMargin = 6.0;        // Center vertically in 24px titlebar
+    float leftMargin = 2.0;       // Small margin from left edge
+
+    if (styleMask & NSMiniaturizableWindowMask) {
+        NSButton *miniButton = [theme standardWindowButton:NSWindowMiniaturizeButton forStyleMask:styleMask];
+        if (miniButton && [miniButton image]) {
+            // Rik positions miniaturize button at LEFT edge (causes title to move right by 17px)
+            NSRect miniFrame = NSMakeRect(
+                leftMargin,  // At left edge
+                topMargin,
+                buttonSize,
+                buttonSize
+            );
+            [[miniButton image] drawInRect:miniFrame
+                                  fromRect:NSZeroRect
+                                 operation:NSCompositeSourceOver
+                                  fraction:1.0];
+        }
+    }
+
+    if (styleMask & NSClosableWindowMask) {
+        NSButton *closeButton = [theme standardWindowButton:NSWindowCloseButton forStyleMask:styleMask];
+        if (closeButton && [closeButton image]) {
+            // Position close button next to miniaturize button (causes title width to reduce by 17px)
+            NSRect closeFrame = NSMakeRect(
+                leftMargin + buttonSpacing,  // 17px from left edge (after miniaturize)
+                topMargin,
+                buttonSize,
+                buttonSize
+            );
+            [[closeButton image] drawInRect:closeFrame
+                                   fromRect:NSZeroRect
+                                  operation:NSCompositeSourceOver
+                                   fraction:1.0];
+        }
+    }
+
+    if (styleMask & NSResizableWindowMask) {
+        NSButton *zoomButton = [theme standardWindowButton:NSWindowZoomButton forStyleMask:styleMask];
+        if (zoomButton && [zoomButton image]) {
+            // Position zoom button after close button
+            NSRect zoomFrame = NSMakeRect(
+                leftMargin + (2 * buttonSpacing),  // 34px from left edge
+                topMargin,
+                buttonSize,
+                buttonSize
+            );
+            [[zoomButton image] drawInRect:zoomFrame
+                                  fromRect:NSZeroRect
+                                 operation:NSCompositeSourceOver
+                                  fraction:1.0];
+        }
+    }
+
     [image unlockFocus];
 
     NSLog(@"GSThemeTitleBar: Created GSTheme image for title: %@", title ?: @"(untitled)");
@@ -188,7 +246,7 @@
 }
 
 - (NSUInteger)windowStyleMask {
-    return NSTitledWindowMask | NSClosableWindowMask | NSResizableWindowMask;
+    return NSTitledWindowMask | NSClosableWindowMask | NSMiniaturizableWindowMask | NSResizableWindowMask;
 }
 
 - (GSThemeControlState)themeStateForActive:(BOOL)isActive {

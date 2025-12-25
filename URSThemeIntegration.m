@@ -39,11 +39,41 @@ static URSThemeIntegration *sharedInstance = nil;
 #pragma mark - GSTheme Management
 
 + (void)initializeGSTheme {
-    // Load default GSTheme
+    // Load the user's current theme from system defaults
     @try {
-        [GSTheme loadThemeNamed:nil];
+        NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+        NSString *themeName = [defaults stringForKey:@"GSTheme"];
+
+        NSLog(@"GSTheme user default: '%@'", themeName ?: @"(none)");
+
+        if (themeName && [themeName length] > 0) {
+            // Remove .theme extension if present
+            if ([[themeName pathExtension] isEqualToString:@"theme"]) {
+                themeName = [themeName stringByDeletingPathExtension];
+            }
+
+            NSLog(@"Loading user's selected theme: %@", themeName);
+            GSTheme *userTheme = [GSTheme loadThemeNamed:themeName];
+            if (userTheme) {
+                [GSTheme setTheme:userTheme];
+                NSLog(@"GSTheme loaded: %@", [userTheme name] ?: @"Unknown");
+                return;
+            } else {
+                NSLog(@"Failed to load theme '%@', falling back to default", themeName);
+            }
+        } else {
+            NSLog(@"No theme specified in GSTheme default, using system default");
+        }
+
+        // Fallback to whatever GSTheme gives us by default
         GSTheme *theme = [GSTheme theme];
-        NSLog(@"GSTheme loaded: %@", [theme name] ?: @"Default");
+        NSLog(@"GSTheme fallback loaded: %@", [theme name] ?: @"Default");
+
+        // Log theme bundle info for debugging
+        if (theme && [theme bundle]) {
+            NSLog(@"Theme bundle path: %@", [[theme bundle] bundlePath]);
+        }
+
     } @catch (NSException *exception) {
         NSLog(@"Failed to load GSTheme: %@", exception.reason);
     }
@@ -111,6 +141,79 @@ static URSThemeIntegration *sharedInstance = nil;
                    forStyleMask:styleMask
                           state:state
                        andTitle:title ?: @""];
+
+        // Add properly positioned buttons using Rik theme specifications
+        // Based on Rik theme analysis: 17px spacing, LEFT-aligned (miniaturize first, then close)
+        float buttonSize = 13.0;
+        float buttonSpacing = 17.0;  // Rik theme uses 17px spacing per button
+        float topMargin = 6.0;        // Center vertically in 24px titlebar
+        float leftMargin = 2.0;       // Small margin from left edge
+
+        if (styleMask & NSMiniaturizableWindowMask) {
+            NSButton *miniButton = [theme standardWindowButton:NSWindowMiniaturizeButton forStyleMask:styleMask];
+            if (miniButton) {
+                // Rik positions miniaturize button at LEFT edge (causes title to move right by 17px)
+                NSRect miniFrame = NSMakeRect(
+                    leftMargin,  // At left edge
+                    topMargin,
+                    buttonSize,
+                    buttonSize
+                );
+
+                NSImage *buttonImage = [miniButton image];
+                if (buttonImage) {
+                    [buttonImage drawInRect:miniFrame
+                                   fromRect:NSZeroRect
+                                  operation:NSCompositeSourceOver
+                                   fraction:1.0];
+                    NSLog(@"Drew miniaturize button at Rik LEFT position: %@", NSStringFromRect(miniFrame));
+                }
+            }
+        }
+
+        if (styleMask & NSClosableWindowMask) {
+            NSButton *closeButton = [theme standardWindowButton:NSWindowCloseButton forStyleMask:styleMask];
+            if (closeButton) {
+                // Position close button next to miniaturize button (causes title width to reduce by 17px)
+                NSRect closeFrame = NSMakeRect(
+                    leftMargin + buttonSpacing,  // 17px from left edge (after miniaturize)
+                    topMargin,
+                    buttonSize,
+                    buttonSize
+                );
+
+                NSImage *buttonImage = [closeButton image];
+                if (buttonImage) {
+                    [buttonImage drawInRect:closeFrame
+                                   fromRect:NSZeroRect
+                                  operation:NSCompositeSourceOver
+                                   fraction:1.0];
+                    NSLog(@"Drew close button at Rik LEFT position: %@", NSStringFromRect(closeFrame));
+                }
+            }
+        }
+
+        if (styleMask & NSResizableWindowMask) {
+            NSButton *zoomButton = [theme standardWindowButton:NSWindowZoomButton forStyleMask:styleMask];
+            if (zoomButton) {
+                // Position zoom button after close button
+                NSRect zoomFrame = NSMakeRect(
+                    leftMargin + (2 * buttonSpacing),  // 34px from left edge
+                    topMargin,
+                    buttonSize,
+                    buttonSize
+                );
+
+                NSImage *buttonImage = [zoomButton image];
+                if (buttonImage) {
+                    [buttonImage drawInRect:zoomFrame
+                                   fromRect:NSZeroRect
+                                  operation:NSCompositeSourceOver
+                                   fraction:1.0];
+                    NSLog(@"Drew zoom button at Rik LEFT position: %@", NSStringFromRect(zoomFrame));
+                }
+            }
+        }
 
         [titlebarImage unlockFocus];
 
@@ -300,12 +403,255 @@ static URSThemeIntegration *sharedInstance = nil;
 
         NSLog(@"Drawing standalone GSTheme titlebar with styleMask: 0x%lx, state: %d", (unsigned long)styleMask, (int)state);
 
+        // Log GSTheme padding and size values to verify Rik theme values
+        if ([theme respondsToSelector:@selector(titlebarPaddingLeft)]) {
+            NSLog(@"GSTheme titlebarPaddingLeft: %.1f", [theme titlebarPaddingLeft]);
+        }
+        if ([theme respondsToSelector:@selector(titlebarPaddingRight)]) {
+            NSLog(@"GSTheme titlebarPaddingRight: %.1f", [theme titlebarPaddingRight]);
+        }
+        if ([theme respondsToSelector:@selector(titlebarPaddingTop)]) {
+            NSLog(@"GSTheme titlebarPaddingTop: %.1f", [theme titlebarPaddingTop]);
+        }
+        if ([theme respondsToSelector:@selector(titlebarButtonSize)]) {
+            NSLog(@"GSTheme titlebarButtonSize: %.1f", [theme titlebarButtonSize]);
+        }
+        NSLog(@"Expected Rik values: paddingLeft=2, paddingRight=2, paddingTop=6, buttonSize=13");
+
         // Draw the window titlebar using GSTheme
         [theme drawWindowBorder:drawRect
                       withFrame:drawRect
                    forStyleMask:styleMask
                           state:state
                        andTitle:title ?: @""];
+
+        // Add properly positioned and styled buttons using direct theme image loading
+        // Use manual Rik positioning since GSTheme methods return generic values
+        NSLog(@"Standalone: Theme name: %@, class: %@", [theme name], [theme class]);
+
+        BOOL isRikTheme = [[theme name] isEqualToString:@"Rik"];
+        NSLog(@"Using %@ positioning for buttons", isRikTheme ? @"authentic Rik" : @"automatic GSTheme");
+
+        if (styleMask & NSClosableWindowMask) {
+            NSRect closeFrame;
+            if (isRikTheme) {
+                // Authentic Rik positioning from GSStandardDecorationView+Rik.m
+                #define RIK_TITLEBAR_BUTTON_SIZE 15
+                #define RIK_TITLEBAR_PADDING_LEFT 10.5
+                #define RIK_TITLEBAR_PADDING_TOP 5.5
+
+                closeFrame = NSMakeRect(
+                    RIK_TITLEBAR_PADDING_LEFT,
+                    drawRect.size.height - RIK_TITLEBAR_BUTTON_SIZE - RIK_TITLEBAR_PADDING_TOP,
+                    RIK_TITLEBAR_BUTTON_SIZE, RIK_TITLEBAR_BUTTON_SIZE);
+                NSLog(@"Standalone: Authentic Rik closeFrame: %@", NSStringFromRect(closeFrame));
+            } else {
+                closeFrame = [theme closeButtonFrameForBounds:drawRect];
+                NSLog(@"Standalone: GSTheme closeButtonFrameForBounds returned: %@", NSStringFromRect(closeFrame));
+            }
+
+            // Load Rik theme specific button images
+            NSImage *closeImage = nil;
+            NSBundle *themeBundle = [theme bundle];
+
+            if (themeBundle) {
+                NSString *bundlePath = [themeBundle bundlePath];
+                NSLog(@"Standalone: Rik theme bundle path: %@", bundlePath);
+
+                // Try Rik-specific close button images
+                NSArray *closeImageNames = @[@"CloseButton", @"close", @"Close", @"common_Close"];
+                NSArray *imageExtensions = @[@"png", @"tiff", @"jpg", @"gif"];
+
+                for (NSString *imageName in closeImageNames) {
+                    for (NSString *ext in imageExtensions) {
+                        NSString *imagePath = [themeBundle pathForResource:imageName ofType:ext];
+                        if (imagePath) {
+                            closeImage = [[NSImage alloc] initWithContentsOfFile:imagePath];
+                            if (closeImage) {
+                                NSLog(@"Standalone: Found Rik close button: %@", imagePath);
+                                break;
+                            }
+                        }
+                    }
+                    if (closeImage) break;
+                }
+            }
+
+            // Fallback to system image if no Rik-specific image found
+            if (!closeImage) {
+                closeImage = [NSImage imageNamed:@"common_Close"];
+                NSLog(@"Standalone: Using fallback common_Close image");
+            }
+
+            NSLog(@"Standalone: Close button image: %@ (from %@)", closeImage, closeImage ? @"loaded" : @"failed to load");
+
+            // Debug: Save the close button image to see what it looks like
+            if (closeImage) {
+                NSData *imageData = [closeImage TIFFRepresentation];
+                if (imageData) {
+                    [imageData writeToFile:@"/tmp/close_button_debug.tiff" atomically:YES];
+                    NSLog(@"Saved close button image to /tmp/close_button_debug.tiff");
+                }
+            }
+
+            if (closeImage) {
+                // Add a circular background to match Rik theme
+                [[NSColor colorWithCalibratedRed:0.9 green:0.9 blue:0.9 alpha:1.0] set];
+                NSBezierPath *ovalPath = [NSBezierPath bezierPathWithOvalInRect:closeFrame];
+                [ovalPath fill];
+
+                // Add a border
+                [[NSColor darkGrayColor] set];
+                [ovalPath stroke];
+
+                // Try different blend modes to make the image visible
+                [closeImage drawInRect:closeFrame
+                               fromRect:NSZeroRect
+                              operation:NSCompositeSourceOver
+                               fraction:1.0];
+                NSLog(@"Standalone: Drew close button image with circular background at frame: %@", NSStringFromRect(closeFrame));
+            } else {
+                // Draw a simple close 'X' if no image available
+                [[NSColor blackColor] set];
+                NSBezierPath *xPath = [NSBezierPath bezierPath];
+                [xPath moveToPoint:NSMakePoint(closeFrame.origin.x + 2, closeFrame.origin.y + 2)];
+                [xPath lineToPoint:NSMakePoint(closeFrame.origin.x + closeFrame.size.width - 2, closeFrame.origin.y + closeFrame.size.height - 2)];
+                [xPath moveToPoint:NSMakePoint(closeFrame.origin.x + closeFrame.size.width - 2, closeFrame.origin.y + 2)];
+                [xPath lineToPoint:NSMakePoint(closeFrame.origin.x + 2, closeFrame.origin.y + closeFrame.size.height - 2)];
+                [xPath setLineWidth:2.0];
+                [xPath stroke];
+                NSLog(@"Standalone: Drew fallback close 'X' at frame: %@", NSStringFromRect(closeFrame));
+            }
+        }
+
+        if (styleMask & NSMiniaturizableWindowMask) {
+            NSRect miniFrame;
+            if (isRikTheme) {
+                // Authentic Rik positioning: miniaturize button after close button with 4px spacing
+                miniFrame = NSMakeRect(
+                    RIK_TITLEBAR_PADDING_LEFT + RIK_TITLEBAR_BUTTON_SIZE + 4, // 4px padding between buttons
+                    drawRect.size.height - RIK_TITLEBAR_BUTTON_SIZE - RIK_TITLEBAR_PADDING_TOP,
+                    RIK_TITLEBAR_BUTTON_SIZE, RIK_TITLEBAR_BUTTON_SIZE);
+                NSLog(@"Standalone: Authentic Rik miniFrame: %@", NSStringFromRect(miniFrame));
+            } else {
+                miniFrame = [theme miniaturizeButtonFrameForBounds:drawRect];
+                NSLog(@"Standalone: GSTheme miniaturizeButtonFrameForBounds returned: %@", NSStringFromRect(miniFrame));
+            }
+
+            // Load Rik theme specific miniaturize button images
+            NSImage *miniImage = nil;
+            NSBundle *themeBundle = [theme bundle];
+
+            if (themeBundle) {
+                // Try Rik-specific miniaturize button images
+                NSArray *miniImageNames = @[@"MiniaturizeButton", @"minimize", @"Minimize", @"common_Miniaturize"];
+                NSArray *imageExtensions = @[@"png", @"tiff", @"jpg", @"gif"];
+
+                for (NSString *imageName in miniImageNames) {
+                    for (NSString *ext in imageExtensions) {
+                        NSString *imagePath = [themeBundle pathForResource:imageName ofType:ext];
+                        if (imagePath) {
+                            miniImage = [[NSImage alloc] initWithContentsOfFile:imagePath];
+                            if (miniImage) {
+                                NSLog(@"Standalone: Found Rik miniaturize button: %@", imagePath);
+                                break;
+                            }
+                        }
+                    }
+                    if (miniImage) break;
+                }
+            }
+
+            // Fallback to system image if no Rik-specific image found
+            if (!miniImage) {
+                miniImage = [NSImage imageNamed:@"common_Miniaturize"];
+                NSLog(@"Standalone: Using fallback common_Miniaturize image");
+            }
+
+            NSLog(@"Standalone: Miniaturize button image: %@ (from %@)", miniImage, miniImage ? @"loaded" : @"failed to load");
+
+            // Debug: Save the miniaturize button image to see what it looks like
+            if (miniImage) {
+                NSData *imageData = [miniImage TIFFRepresentation];
+                if (imageData) {
+                    [imageData writeToFile:@"/tmp/miniaturize_button_debug.tiff" atomically:YES];
+                    NSLog(@"Saved miniaturize button image to /tmp/miniaturize_button_debug.tiff");
+                }
+            }
+
+            if (miniImage) {
+                // Add a circular background to match Rik theme
+                [[NSColor colorWithCalibratedRed:0.9 green:0.9 blue:0.9 alpha:1.0] set];
+                NSBezierPath *ovalPath = [NSBezierPath bezierPathWithOvalInRect:miniFrame];
+                [ovalPath fill];
+
+                // Add a border
+                [[NSColor darkGrayColor] set];
+                [ovalPath stroke];
+
+                // Try different blend modes to make the image visible
+                [miniImage drawInRect:miniFrame
+                              fromRect:NSZeroRect
+                             operation:NSCompositeSourceOver
+                              fraction:1.0];
+                NSLog(@"Standalone: Drew miniaturize button image with circular background at frame: %@", NSStringFromRect(miniFrame));
+            } else {
+                // Draw a simple minimize line if no image available
+                [[NSColor blackColor] set];
+                NSRect lineRect = NSMakeRect(miniFrame.origin.x + 2,
+                                           miniFrame.origin.y + miniFrame.size.height/2 - 1,
+                                           miniFrame.size.width - 4, 2);
+                NSRectFill(lineRect);
+                NSLog(@"Standalone: Drew fallback minimize line at frame: %@", NSStringFromRect(miniFrame));
+            }
+        }
+
+        if (styleMask & NSResizableWindowMask) {
+            NSButton *zoomButton = [theme standardWindowButton:NSWindowZoomButton forStyleMask:styleMask];
+            if (zoomButton) {
+                NSRect zoomFrame;
+                if (isRikTheme) {
+                    // Authentic Rik positioning: zoom button after miniaturize button
+                    zoomFrame = NSMakeRect(
+                        RIK_TITLEBAR_PADDING_LEFT + (RIK_TITLEBAR_BUTTON_SIZE + 4) * 2, // After miniaturize button
+                        drawRect.size.height - RIK_TITLEBAR_BUTTON_SIZE - RIK_TITLEBAR_PADDING_TOP,
+                        RIK_TITLEBAR_BUTTON_SIZE, RIK_TITLEBAR_BUTTON_SIZE);
+                    NSLog(@"Standalone: Authentic Rik zoomFrame: %@", NSStringFromRect(zoomFrame));
+                } else {
+                    // Calculate zoom button position based on miniaturize button + some spacing
+                    NSRect miniFrame = [theme miniaturizeButtonFrameForBounds:drawRect];
+                    float buttonSpacing = 2.0; // Small gap between buttons
+
+                    zoomFrame = NSMakeRect(
+                        miniFrame.origin.x + miniFrame.size.width + buttonSpacing,
+                        miniFrame.origin.y,
+                        miniFrame.size.width,
+                        miniFrame.size.height
+                    );
+                    NSLog(@"Standalone: Calculated zoom frame based on miniaturize: %@", NSStringFromRect(zoomFrame));
+                }
+
+                NSImage *buttonImage = [zoomButton image];
+                if (buttonImage) {
+                    // Add a light background to make the image visible
+                    [[NSColor colorWithCalibratedRed:0.9 green:0.9 blue:0.9 alpha:1.0] set];
+                    NSBezierPath *ovalPath = [NSBezierPath bezierPathWithOvalInRect:zoomFrame];
+                    [ovalPath fill];
+
+                    // Add a border
+                    [[NSColor darkGrayColor] set];
+                    [ovalPath stroke];
+
+                    [buttonImage drawInRect:zoomFrame
+                                   fromRect:NSZeroRect
+                                  operation:NSCompositeSourceOver
+                                   fraction:1.0];
+                    NSLog(@"Standalone: Drew zoom button with circular background at frame: %@", NSStringFromRect(zoomFrame));
+                } else {
+                    NSLog(@"Standalone: No zoom button image available");
+                }
+            }
+        }
 
         [titlebarImage unlockFocus];
 
