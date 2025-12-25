@@ -343,6 +343,42 @@ static URSThemeIntegration *sharedInstance = nil;
     NSLog(@"Creating Cairo surface for titlebar pixmap: %u, size: %dx%d",
           titlebar.pixmap, (int)image.size.width, (int)image.size.height);
 
+    // DEBUG: Check bitmap format and sample pixel data
+    NSLog(@"Bitmap format: %ldx%ld, bitsPerPixel=%ld, bytesPerRow=%ld, colorSpace=%@, format=%lu",
+          [bitmap pixelsWide], [bitmap pixelsHigh], [bitmap bitsPerPixel],
+          [bitmap bytesPerRow], [bitmap colorSpaceName], [bitmap bitmapFormat]);
+
+    // Sample a few pixels to see actual byte values
+    unsigned char *pixels = [bitmap bitmapData];
+    if (pixels && [bitmap pixelsWide] >= 15 && [bitmap pixelsHigh] >= 8) {
+        int closeX = 18, closeY = 12;  // Should be red button area
+        int miniX = 37, miniY = 12;   // Should be yellow button area
+        int zoomX = 56, zoomY = 12;   // Should be green button area
+
+        int bytesPerPixel = [bitmap bitsPerPixel] / 8;
+
+        // Sample close button pixel (should be red)
+        int offset = (closeY * [bitmap bytesPerRow]) + (closeX * bytesPerPixel);
+        if (bytesPerPixel >= 4) {
+            NSLog(@"Close button pixel (%d,%d): [0]=%d [1]=%d [2]=%d [3]=%d",
+                  closeX, closeY, pixels[offset], pixels[offset+1], pixels[offset+2], pixels[offset+3]);
+        }
+
+        // Sample miniaturize button pixel (should be yellow)
+        offset = (miniY * [bitmap bytesPerRow]) + (miniX * bytesPerPixel);
+        if (bytesPerPixel >= 4) {
+            NSLog(@"Mini button pixel (%d,%d): [0]=%d [1]=%d [2]=%d [3]=%d",
+                  miniX, miniY, pixels[offset], pixels[offset+1], pixels[offset+2], pixels[offset+3]);
+        }
+
+        // Sample zoom button pixel (should be green)
+        offset = (zoomY * [bitmap bytesPerRow]) + (zoomX * bytesPerPixel);
+        if (bytesPerPixel >= 4) {
+            NSLog(@"Zoom button pixel (%d,%d): [0]=%d [1]=%d [2]=%d [3]=%d",
+                  zoomX, zoomY, pixels[offset], pixels[offset+1], pixels[offset+2], pixels[offset+3]);
+        }
+    }
+
     // Create Cairo surface from XCB titlebar pixmap
     cairo_surface_t *x11Surface = cairo_xcb_surface_create(
         [titlebar.connection connection],
@@ -364,12 +400,35 @@ static URSThemeIntegration *sharedInstance = nil;
     cairo_t *ctx = cairo_create(x11Surface);
 
     // Create Cairo image surface from bitmap data
+    // NOTE: NSBitmapImageRep uses RGBA but Cairo ARGB32 expects BGRA, so we need to convert
+    unsigned char *bitmapPixels = [bitmap bitmapData];
+    int width = [bitmap pixelsWide];
+    int height = [bitmap pixelsHigh];
+    int bytesPerRow = [bitmap bytesPerRow];
+
+    // Convert RGBA to BGRA for Cairo
+    for (int y = 0; y < height; y++) {
+        for (int x = 0; x < width; x++) {
+            int offset = (y * bytesPerRow) + (x * 4);
+            unsigned char r = bitmapPixels[offset];
+            unsigned char g = bitmapPixels[offset + 1];
+            unsigned char b = bitmapPixels[offset + 2];
+            unsigned char a = bitmapPixels[offset + 3];
+
+            // Swap R and B for BGRA format expected by Cairo
+            bitmapPixels[offset] = b;     // Blue
+            bitmapPixels[offset + 1] = g; // Green (unchanged)
+            bitmapPixels[offset + 2] = r; // Red
+            bitmapPixels[offset + 3] = a; // Alpha (unchanged)
+        }
+    }
+
     cairo_surface_t *imageSurface = cairo_image_surface_create_for_data(
-        [bitmap bitmapData],
+        bitmapPixels,
         CAIRO_FORMAT_ARGB32,
-        [bitmap pixelsWide],
-        [bitmap pixelsHigh],
-        [bitmap bytesPerRow]
+        width,
+        height,
+        bytesPerRow
     );
 
     if (cairo_surface_status(imageSurface) != CAIRO_STATUS_SUCCESS) {
@@ -589,7 +648,10 @@ static URSThemeIntegration *sharedInstance = nil;
 
             if (closeImage) {
                 // Draw authentic Rik close button using the exact color and method from NSWindow+Rik.m
-                NSColor *closeButtonColor = [NSColor colorWithCalibratedRed: 0.97 green: 0.26 blue: 0.23 alpha: 1.0];
+                NSColor *closeButtonColor = [NSColor colorWithDeviceRed: 0.97 green: 0.26 blue: 0.23 alpha: 1.0];
+                NSLog(@"Close button color - R:%.3f G:%.3f B:%.3f A:%.3f",
+                      [closeButtonColor redComponent], [closeButtonColor greenComponent],
+                      [closeButtonColor blueComponent], [closeButtonColor alphaComponent]);
                 [URSThemeIntegration drawRikButtonBall:closeFrame withColor:closeButtonColor];
                 NSLog(@"Standalone: Drew authentic Rik close button ball with red color");
 
@@ -684,7 +746,10 @@ static URSThemeIntegration *sharedInstance = nil;
 
             if (miniImage) {
                 // Draw authentic Rik miniaturize button using the exact color from NSWindow+Rik.m
-                NSColor *miniButtonColor = [NSColor colorWithCalibratedRed: 0.9 green: 0.7 blue: 0.3 alpha: 1];
+                NSColor *miniButtonColor = [NSColor colorWithDeviceRed: 0.9 green: 0.7 blue: 0.3 alpha: 1];
+                NSLog(@"Mini button color - R:%.3f G:%.3f B:%.3f A:%.3f",
+                      [miniButtonColor redComponent], [miniButtonColor greenComponent],
+                      [miniButtonColor blueComponent], [miniButtonColor alphaComponent]);
                 [URSThemeIntegration drawRikButtonBall:miniFrame withColor:miniButtonColor];
                 NSLog(@"Standalone: Drew authentic Rik miniaturize button ball with yellow color");
 
@@ -742,7 +807,10 @@ static URSThemeIntegration *sharedInstance = nil;
                 NSImage *buttonImage = [zoomButton image];
                 if (buttonImage) {
                     // Draw authentic Rik zoom button using the exact color from NSWindow+Rik.m
-                    NSColor *zoomButtonColor = [NSColor colorWithCalibratedRed: 0.322 green: 0.778 blue: 0.244 alpha: 1];
+                    NSColor *zoomButtonColor = [NSColor colorWithDeviceRed: 0.322 green: 0.778 blue: 0.244 alpha: 1];
+                    NSLog(@"Zoom button color - R:%.3f G:%.3f B:%.3f A:%.3f",
+                          [zoomButtonColor redComponent], [zoomButtonColor greenComponent],
+                          [zoomButtonColor blueComponent], [zoomButtonColor alphaComponent]);
                     [URSThemeIntegration drawRikButtonBall:zoomFrame withColor:zoomButtonColor];
                     NSLog(@"Standalone: Drew authentic Rik zoom button ball with green color");
 
