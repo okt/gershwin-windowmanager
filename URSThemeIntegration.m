@@ -17,6 +17,89 @@
 
 static URSThemeIntegration *sharedInstance = nil;
 
+// Method to draw authentic Rik button balls using the exact gradient logic from RikWindowButtonCell
++ (void)drawRikButtonBall:(NSRect)frame withColor:(NSColor*)baseColor {
+    // Replicate RikWindowButtonCell drawBallWithRect logic exactly
+    frame = NSInsetRect(frame, 0.5, 0.5);
+    NSColor *bc = baseColor;
+    float luminosity = 0.5;
+
+    NSColor *gradientDownColor1 = [bc highlightWithLevel: luminosity];
+    NSColor *gradientDownColor2 = [bc colorWithAlphaComponent: 0];
+    NSColor *shadowColor1 = [bc shadowWithLevel: 0.4];
+    NSColor *shadowColor2 = [bc shadowWithLevel: 0.6];
+    NSColor *gradientStrokeColor2 = [shadowColor1 highlightWithLevel: luminosity];
+    NSColor *gradientUpColor1 = [bc highlightWithLevel: luminosity+0.2];
+    NSColor *gradientUpColor2 = [gradientUpColor1 colorWithAlphaComponent: 0.5];
+    NSColor *gradientUpColor3 = [gradientUpColor1 colorWithAlphaComponent: 0];
+    NSColor *light1 = [NSColor whiteColor];
+    NSColor *light2 = [light1 colorWithAlphaComponent:0];
+
+    // Gradient Declarations
+    NSGradient *gradientUp = [[NSGradient alloc] initWithColorsAndLocations:
+        gradientUpColor1, 0.1,
+        gradientUpColor2, 0.3,
+        gradientUpColor3, 1.0, nil];
+    NSGradient *gradientDown = [[NSGradient alloc] initWithColorsAndLocations:
+        gradientDownColor1, 0.0,
+        gradientDownColor2, 1.0, nil];
+    NSGradient *baseGradient = [[NSGradient alloc] initWithColorsAndLocations:
+        bc, 0.0,
+        shadowColor1, 0.80, nil];
+    NSGradient *gradientStroke = [[NSGradient alloc] initWithColorsAndLocations:
+        light1, 0.2,
+        light2, 1.0, nil];
+    NSGradient *gradientStroke2 = [[NSGradient alloc] initWithColorsAndLocations:
+        shadowColor2, 0.47,
+        gradientStrokeColor2, 1.0, nil];
+
+    // Drawing code from RikWindowButtonCell
+    NSRect baseCircleGradientStrokeRect = frame;
+    NSRect baseCircleGradientStrokeRect2 = NSInsetRect(baseCircleGradientStrokeRect, 0.5, 0.5);
+    frame = NSInsetRect(frame, 1, 1);
+
+    NSRect baseCircleRect = NSMakeRect(NSMinX(frame) + floor(NSWidth(frame) * 0.06667 + 0.5), NSMinY(frame) + floor(NSHeight(frame) * 0.06667 + 0.5), floor(NSWidth(frame) * 0.93333 + 0.5) - floor(NSWidth(frame) * 0.06667 + 0.5), floor(NSHeight(frame) * 0.93333 + 0.5) - floor(NSHeight(frame) * 0.06667 + 0.5));
+    NSRect basecircle2Rect = NSMakeRect(NSMinX(frame) + floor(NSWidth(frame) * 0.06667 + 0.5), NSMinY(frame) + floor(NSHeight(frame) * 0.06667 + 0.5), floor(NSWidth(frame) * 0.93333 + 0.5) - floor(NSWidth(frame) * 0.06667 + 0.5), floor(NSHeight(frame) * 0.93333 + 0.5) - floor(NSHeight(frame) * 0.06667 + 0.5));
+
+    // BaseCircleGradientStroke Drawing
+    NSBezierPath *baseCircleGradientStrokePath = [NSBezierPath bezierPathWithOvalInRect: baseCircleGradientStrokeRect];
+    [gradientStroke drawInBezierPath: baseCircleGradientStrokePath angle: 90];
+    NSBezierPath *baseCircleGradientStrokePath2 = [NSBezierPath bezierPathWithOvalInRect: baseCircleGradientStrokeRect2];
+    [gradientStroke2 drawInBezierPath: baseCircleGradientStrokePath2 angle: -90];
+
+    // BaseCircle Drawing
+    NSBezierPath *baseCirclePath = [NSBezierPath bezierPathWithOvalInRect: baseCircleRect];
+    CGFloat baseCircleResizeRatio = MIN(NSWidth(baseCircleRect) / 13, NSHeight(baseCircleRect) / 13);
+    [NSGraphicsContext saveGraphicsState];
+    [baseCirclePath addClip];
+    [baseGradient drawFromCenter: NSMakePoint(NSMidX(baseCircleRect) + 0 * baseCircleResizeRatio, NSMidY(baseCircleRect) + 0 * baseCircleResizeRatio) radius: 2.85 * baseCircleResizeRatio
+        toCenter: NSMakePoint(NSMidX(baseCircleRect) + 0 * baseCircleResizeRatio, NSMidY(baseCircleRect) + 0 * baseCircleResizeRatio) radius: 7.32 * baseCircleResizeRatio
+        options: NSGradientDrawsBeforeStartingLocation | NSGradientDrawsAfterEndingLocation];
+    [NSGraphicsContext restoreGraphicsState];
+
+    // basecircle2 Drawing
+    NSBezierPath *basecircle2Path = [NSBezierPath bezierPathWithOvalInRect: basecircle2Rect];
+    CGFloat basecircle2ResizeRatio = MIN(NSWidth(basecircle2Rect) / 13, NSHeight(basecircle2Rect) / 13);
+    [NSGraphicsContext saveGraphicsState];
+    [basecircle2Path addClip];
+    [gradientDown drawFromCenter: NSMakePoint(NSMidX(basecircle2Rect) + -0.98 * basecircle2ResizeRatio, NSMidY(basecircle2Rect) + -6.5 * basecircle2ResizeRatio) radius: 1.54 * basecircle2ResizeRatio
+        toCenter: NSMakePoint(NSMidX(basecircle2Rect) + -1.86 * basecircle2ResizeRatio, NSMidY(basecircle2Rect) + -8.73 * basecircle2ResizeRatio) radius: 8.65 * basecircle2ResizeRatio
+        options: NSGradientDrawsBeforeStartingLocation | NSGradientDrawsAfterEndingLocation];
+    [NSGraphicsContext restoreGraphicsState];
+
+    // halfcircle Drawing
+    NSBezierPath *halfcirclePath = [NSBezierPath bezierPath];
+    [halfcirclePath moveToPoint: NSMakePoint(NSMinX(frame) + 0.93316 * NSWidth(frame), NSMinY(frame) + 0.46157 * NSHeight(frame))];
+    [halfcirclePath curveToPoint: NSMakePoint(NSMinX(frame) + 0.78652 * NSWidth(frame), NSMinY(frame) + 0.81548 * NSHeight(frame)) controlPoint1: NSMakePoint(NSMinX(frame) + 0.93316 * NSWidth(frame), NSMinY(frame) + 0.46157 * NSHeight(frame)) controlPoint2: NSMakePoint(NSMinX(frame) + 0.94476 * NSWidth(frame), NSMinY(frame) + 0.66376 * NSHeight(frame))];
+    [halfcirclePath curveToPoint: NSMakePoint(NSMinX(frame) + 0.21348 * NSWidth(frame), NSMinY(frame) + 0.81548 * NSHeight(frame)) controlPoint1: NSMakePoint(NSMinX(frame) + 0.62828 * NSWidth(frame), NSMinY(frame) + 0.96721 * NSHeight(frame)) controlPoint2: NSMakePoint(NSMinX(frame) + 0.37172 * NSWidth(frame), NSMinY(frame) + 0.96721 * NSHeight(frame))];
+    [halfcirclePath curveToPoint: NSMakePoint(NSMinX(frame) + 0.06684 * NSWidth(frame), NSMinY(frame) + 0.46157 * NSHeight(frame)) controlPoint1: NSMakePoint(NSMinX(frame) + 0.05524 * NSWidth(frame), NSMinY(frame) + 0.66376 * NSHeight(frame)) controlPoint2: NSMakePoint(NSMinX(frame) + 0.06684 * NSWidth(frame), NSMinY(frame) + 0.46157 * NSHeight(frame))];
+    [halfcirclePath lineToPoint: NSMakePoint(NSMinX(frame) + 0.93316 * NSWidth(frame), NSMinY(frame) + 0.46157 * NSHeight(frame))];
+    [halfcirclePath closePath];
+    [halfcirclePath setLineCapStyle: NSRoundLineCapStyle];
+    [halfcirclePath setLineJoinStyle: NSRoundLineJoinStyle];
+    [gradientUp drawInBezierPath: halfcirclePath angle: -90];
+}
+
 #pragma mark - Singleton Management
 
 + (instancetype)sharedInstance {
@@ -505,21 +588,10 @@ static URSThemeIntegration *sharedInstance = nil;
             }
 
             if (closeImage) {
-                // Add authentic Rik button background - make it exactly image size (12x13)
-                // Center a 12x12 ball within the 15x15 frame to exactly match image width
-                NSRect ballFrame = NSMakeRect(
-                    closeFrame.origin.x + 1.5,
-                    closeFrame.origin.y + 1.5,
-                    12.0, 12.0);
-                NSLog(@"Standalone: Close ballFrame (13x13 centered): %@", NSStringFromRect(ballFrame));
-
-                [[NSColor colorWithCalibratedRed:0.9 green:0.9 blue:0.9 alpha:1.0] set];
-                NSBezierPath *ovalPath = [NSBezierPath bezierPathWithOvalInRect:ballFrame];
-                [ovalPath fill];
-
-                // Add a border
-                [[NSColor darkGrayColor] set];
-                [ovalPath stroke];
+                // Draw authentic Rik close button using the exact color and method from NSWindow+Rik.m
+                NSColor *closeButtonColor = [NSColor colorWithCalibratedRed: 0.97 green: 0.26 blue: 0.23 alpha: 1.0];
+                [URSThemeIntegration drawRikButtonBall:closeFrame withColor:closeButtonColor];
+                NSLog(@"Standalone: Drew authentic Rik close button ball with red color");
 
                 // Draw the 12x13 image centered in the 15x15 frame
                 NSRect imageRect = NSMakeRect(
@@ -611,21 +683,10 @@ static URSThemeIntegration *sharedInstance = nil;
             }
 
             if (miniImage) {
-                // Add authentic Rik button background - make it exactly image size (12x13)
-                // Center a 12x12 ball within the 15x15 frame to exactly match image width
-                NSRect ballFrame = NSMakeRect(
-                    miniFrame.origin.x + 1.5,
-                    miniFrame.origin.y + 1.5,
-                    12.0, 12.0);
-                NSLog(@"Standalone: Mini ballFrame (13x13 centered): %@", NSStringFromRect(ballFrame));
-
-                [[NSColor colorWithCalibratedRed:0.9 green:0.9 blue:0.9 alpha:1.0] set];
-                NSBezierPath *ovalPath = [NSBezierPath bezierPathWithOvalInRect:ballFrame];
-                [ovalPath fill];
-
-                // Add a border
-                [[NSColor darkGrayColor] set];
-                [ovalPath stroke];
+                // Draw authentic Rik miniaturize button using the exact color from NSWindow+Rik.m
+                NSColor *miniButtonColor = [NSColor colorWithCalibratedRed: 0.9 green: 0.7 blue: 0.3 alpha: 1];
+                [URSThemeIntegration drawRikButtonBall:miniFrame withColor:miniButtonColor];
+                NSLog(@"Standalone: Drew authentic Rik miniaturize button ball with yellow color");
 
                 // Draw the 12x13 image centered in the 15x15 frame
                 NSRect imageRect = NSMakeRect(
@@ -680,19 +741,10 @@ static URSThemeIntegration *sharedInstance = nil;
 
                 NSImage *buttonImage = [zoomButton image];
                 if (buttonImage) {
-                    // Add authentic Rik button background - make it exactly image size
-                    // Center a 12x12 ball within the 15x15 frame to exactly match image width
-                    NSRect ballFrame = NSMakeRect(
-                        zoomFrame.origin.x + 1.5,
-                        zoomFrame.origin.y + 1.5,
-                        12.0, 12.0);
-                    [[NSColor colorWithCalibratedRed:0.9 green:0.9 blue:0.9 alpha:1.0] set];
-                    NSBezierPath *ovalPath = [NSBezierPath bezierPathWithOvalInRect:ballFrame];
-                    [ovalPath fill];
-
-                    // Add a border
-                    [[NSColor darkGrayColor] set];
-                    [ovalPath stroke];
+                    // Draw authentic Rik zoom button using the exact color from NSWindow+Rik.m
+                    NSColor *zoomButtonColor = [NSColor colorWithCalibratedRed: 0.322 green: 0.778 blue: 0.244 alpha: 1];
+                    [URSThemeIntegration drawRikButtonBall:zoomFrame withColor:zoomButtonColor];
+                    NSLog(@"Standalone: Drew authentic Rik zoom button ball with green color");
 
                     // Draw the image centered in the 15x15 frame (most zoom images are also 12x13)
                     NSRect imageRect = NSMakeRect(
