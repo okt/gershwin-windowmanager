@@ -46,9 +46,9 @@ static NSMutableSet *fixedSizeWindows = nil;
     }
 }
 
-// Method to draw authentic Rik button balls using the exact gradient logic from RikWindowButtonCell
-+ (void)drawRikButtonBall:(NSRect)frame withColor:(NSColor*)baseColor {
-    // Replicate RikWindowButtonCell drawBallWithRect logic exactly
+// Method to draw authentic Eau button balls using the exact gradient logic from EauWindowButtonCell
++ (void)drawEauButtonBall:(NSRect)frame withColor:(NSColor*)baseColor {
+    // Replicate EauWindowButtonCell drawBallWithRect logic exactly
     frame = NSInsetRect(frame, 0.5, 0.5);
     NSColor *bc = baseColor;
     float luminosity = 0.5;
@@ -82,7 +82,7 @@ static NSMutableSet *fixedSizeWindows = nil;
         shadowColor2, 0.47,
         gradientStrokeColor2, 1.0, nil];
 
-    // Drawing code from RikWindowButtonCell
+    // Drawing code from EauWindowButtonCell
     NSRect baseCircleGradientStrokeRect = frame;
     NSRect baseCircleGradientStrokeRect2 = NSInsetRect(baseCircleGradientStrokeRect, 0.5, 0.5);
     frame = NSInsetRect(frame, 1, 1);
@@ -283,17 +283,17 @@ static NSMutableSet *fixedSizeWindows = nil;
                           state:state
                        andTitle:title ?: @""];
 
-        // Add properly positioned buttons using Rik theme specifications
-        // Based on Rik theme analysis: 17px spacing, LEFT-aligned (miniaturize first, then close)
+        // Add properly positioned buttons using Eau theme specifications
+        // Based on Eau theme analysis: 17px spacing, LEFT-aligned (miniaturize first, then close)
         float buttonSize = 13.0;
-        float buttonSpacing = 17.0;  // Rik theme uses 17px spacing per button
+        float buttonSpacing = 17.0;  // Eau theme uses 17px spacing per button
         float topMargin = 6.0;        // Center vertically in 24px titlebar
         float leftMargin = 2.0;       // Small margin from left edge
 
         if (styleMask & NSMiniaturizableWindowMask) {
             NSButton *miniButton = [theme standardWindowButton:NSWindowMiniaturizeButton forStyleMask:styleMask];
             if (miniButton) {
-                // Rik positions miniaturize button at LEFT edge (causes title to move right by 17px)
+                // Eau positions miniaturize button at LEFT edge (causes title to move right by 17px)
                 NSRect miniFrame = NSMakeRect(
                     leftMargin,  // At left edge
                     topMargin,
@@ -307,7 +307,7 @@ static NSMutableSet *fixedSizeWindows = nil;
                                    fromRect:NSZeroRect
                                   operation:NSCompositeSourceOver
                                    fraction:1.0];
-                    NSLog(@"Drew miniaturize button at Rik LEFT position: %@", NSStringFromRect(miniFrame));
+                    NSLog(@"Drew miniaturize button at Eau LEFT position: %@", NSStringFromRect(miniFrame));
                 }
             }
         }
@@ -329,7 +329,7 @@ static NSMutableSet *fixedSizeWindows = nil;
                                    fromRect:NSZeroRect
                                   operation:NSCompositeSourceOver
                                    fraction:1.0];
-                    NSLog(@"Drew close button at Rik LEFT position: %@", NSStringFromRect(closeFrame));
+                    NSLog(@"Drew close button at Eau LEFT position: %@", NSStringFromRect(closeFrame));
                 }
             }
         }
@@ -351,7 +351,7 @@ static NSMutableSet *fixedSizeWindows = nil;
                                    fromRect:NSZeroRect
                                   operation:NSCompositeSourceOver
                                    fraction:1.0];
-                    NSLog(@"Drew zoom button at Rik LEFT position: %@", NSStringFromRect(zoomFrame));
+                    NSLog(@"Drew zoom button at Eau LEFT position: %@", NSStringFromRect(zoomFrame));
                 }
             }
         }
@@ -700,7 +700,7 @@ static NSMutableSet *fixedSizeWindows = nil;
 
         NSLog(@"Drawing standalone GSTheme titlebar with styleMask: 0x%lx, state: %d", (unsigned long)styleMask, (int)state);
 
-        // Log GSTheme padding and size values to verify Rik theme values
+        // Log GSTheme padding and size values to verify Eau theme values
         if ([theme respondsToSelector:@selector(titlebarPaddingLeft)]) {
             NSLog(@"GSTheme titlebarPaddingLeft: %.1f", [theme titlebarPaddingLeft]);
         }
@@ -713,11 +713,11 @@ static NSMutableSet *fixedSizeWindows = nil;
         if ([theme respondsToSelector:@selector(titlebarButtonSize)]) {
             NSLog(@"GSTheme titlebarButtonSize: %.1f", [theme titlebarButtonSize]);
         }
-        NSLog(@"Expected Rik values: paddingLeft=2, paddingRight=2, paddingTop=6, buttonSize=13");
+        NSLog(@"Expected Eau values: paddingLeft=2, paddingRight=2, paddingTop=6, buttonSize=13");
 
         // Get theme font settings for titlebar text
-        NSString *themeFontName = @"LuxiSans"; // Default from Rik theme
-        float themeFontSize = 13.0;            // Default from Rik theme
+        NSString *themeFontName = @"LuxiSans"; // Default from Eau theme
+        float themeFontSize = 13.0;            // Default from Eau theme
 
         // Try to get font settings from theme bundle
         NSBundle *themeBundle = [theme bundle];
@@ -790,49 +790,49 @@ static NSMutableSet *fixedSizeWindows = nil;
         }
 
         // Add properly positioned and styled buttons using direct theme image loading
-        // Use manual Rik positioning since GSTheme methods return generic values
+        // Use manual Eau positioning since GSTheme methods return generic values
         NSLog(@"Standalone: Theme name: %@, class: %@", [theme name], [theme class]);
 
-        BOOL isRikTheme = [[theme name] isEqualToString:@"Rik"];
-        NSLog(@"Using %@ positioning for buttons", isRikTheme ? @"authentic Rik" : @"automatic GSTheme");
+        BOOL isEauTheme = [[theme name] isEqualToString:@"Eau"];
+        NSLog(@"Using %@ positioning for buttons", isEauTheme ? @"authentic Eau" : @"automatic GSTheme");
 
-        // COMPARISON: Log what the actual Rik theme positioning methods return
-        if (isRikTheme) {
+        // COMPARISON: Log what the actual Eau theme positioning methods return
+        if (isEauTheme) {
             NSRect actualCloseFrame = [theme closeButtonFrameForBounds:drawRect];
             NSRect actualMiniFrame = [theme miniaturizeButtonFrameForBounds:drawRect];
-            NSLog(@"COMPARISON - Actual Rik closeButtonFrame: %@", NSStringFromRect(actualCloseFrame));
-            NSLog(@"COMPARISON - Actual Rik miniaturizeButtonFrame: %@", NSStringFromRect(actualMiniFrame));
+            NSLog(@"COMPARISON - Actual Eau closeButtonFrame: %@", NSStringFromRect(actualCloseFrame));
+            NSLog(@"COMPARISON - Actual Eau miniaturizeButtonFrame: %@", NSStringFromRect(actualMiniFrame));
         }
 
         if (styleMask & NSClosableWindowMask) {
             NSRect closeFrame;
-            if (isRikTheme) {
-                // Authentic Rik positioning from GSStandardDecorationView+Rik.m
-                #define RIK_TITLEBAR_BUTTON_SIZE 15
-                #define RIK_TITLEBAR_PADDING_LEFT 10.5
-                #define RIK_TITLEBAR_PADDING_TOP 5.5
+            if (isEauTheme) {
+                // Authentic Eau positioning from GSStandardDecorationView+Eau.m
+                #define EAU_TITLEBAR_BUTTON_SIZE 15
+                #define EAU_TITLEBAR_PADDING_LEFT 10.5
+                #define EAU_TITLEBAR_PADDING_TOP 5.5
 
                 closeFrame = NSMakeRect(
-                    RIK_TITLEBAR_PADDING_LEFT,
-                    drawRect.size.height - RIK_TITLEBAR_BUTTON_SIZE - RIK_TITLEBAR_PADDING_TOP,
-                    RIK_TITLEBAR_BUTTON_SIZE, RIK_TITLEBAR_BUTTON_SIZE);
-                NSLog(@"Standalone: Our Rik closeFrame: %@", NSStringFromRect(closeFrame));
+                    EAU_TITLEBAR_PADDING_LEFT,
+                    drawRect.size.height - EAU_TITLEBAR_BUTTON_SIZE - EAU_TITLEBAR_PADDING_TOP,
+                    EAU_TITLEBAR_BUTTON_SIZE, EAU_TITLEBAR_BUTTON_SIZE);
+                NSLog(@"Standalone: Our Eau closeFrame: %@", NSStringFromRect(closeFrame));
                 NSLog(@"COMPARISON - Using constants: left=%.1f, top=%.1f, size=%.1f",
-                      RIK_TITLEBAR_PADDING_LEFT, RIK_TITLEBAR_PADDING_TOP, (float)RIK_TITLEBAR_BUTTON_SIZE);
+                      EAU_TITLEBAR_PADDING_LEFT, EAU_TITLEBAR_PADDING_TOP, (float)EAU_TITLEBAR_BUTTON_SIZE);
             } else {
                 closeFrame = [theme closeButtonFrameForBounds:drawRect];
                 NSLog(@"Standalone: GSTheme closeButtonFrameForBounds returned: %@", NSStringFromRect(closeFrame));
             }
 
-            // Load Rik theme specific button images
+            // Load Eau theme specific button images
             NSImage *closeImage = nil;
             NSBundle *themeBundle = [theme bundle];
 
             if (themeBundle) {
                 NSString *bundlePath = [themeBundle bundlePath];
-                NSLog(@"Standalone: Rik theme bundle path: %@", bundlePath);
+                NSLog(@"Standalone: Eau theme bundle path: %@", bundlePath);
 
-                // Try Rik-specific close button images
+                // Try Eau-specific close button images
                 NSArray *closeImageNames = @[@"CloseButton", @"close", @"Close", @"common_Close"];
                 NSArray *imageExtensions = @[@"png", @"tiff", @"jpg", @"gif"];
 
@@ -842,7 +842,7 @@ static NSMutableSet *fixedSizeWindows = nil;
                         if (imagePath) {
                             closeImage = [[NSImage alloc] initWithContentsOfFile:imagePath];
                             if (closeImage) {
-                                NSLog(@"Standalone: Found Rik close button: %@", imagePath);
+                                NSLog(@"Standalone: Found Eau close button: %@", imagePath);
                                 break;
                             }
                         }
@@ -851,7 +851,7 @@ static NSMutableSet *fixedSizeWindows = nil;
                 }
             }
 
-            // Fallback to system image if no Rik-specific image found
+            // Fallback to system image if no Eau-specific image found
             if (!closeImage) {
                 closeImage = [NSImage imageNamed:@"common_Close"];
                 NSLog(@"Standalone: Using fallback common_Close image");
@@ -869,13 +869,13 @@ static NSMutableSet *fixedSizeWindows = nil;
             }
 
             if (closeImage) {
-                // Draw authentic Rik close button using the exact color and method from NSWindow+Rik.m
+                // Draw authentic Eau close button using the exact color and method from NSWindow+Eau.m
                 NSColor *closeButtonColor = [NSColor colorWithDeviceRed: 0.97 green: 0.26 blue: 0.23 alpha: 1.0];
                 NSLog(@"Close button color - R:%.3f G:%.3f B:%.3f A:%.3f",
                       [closeButtonColor redComponent], [closeButtonColor greenComponent],
                       [closeButtonColor blueComponent], [closeButtonColor alphaComponent]);
-                [URSThemeIntegration drawRikButtonBall:closeFrame withColor:closeButtonColor];
-                NSLog(@"Standalone: Drew authentic Rik close button ball with red color");
+                [URSThemeIntegration drawEauButtonBall:closeFrame withColor:closeButtonColor];
+                NSLog(@"Standalone: Drew authentic Eau close button ball with red color");
 
                 // Draw the 12x13 image centered in the 15x15 frame
                 NSRect imageRect = NSMakeRect(
@@ -908,29 +908,29 @@ static NSMutableSet *fixedSizeWindows = nil;
 
         if (styleMask & NSMiniaturizableWindowMask) {
             NSRect miniFrame;
-            if (isRikTheme) {
-                // Authentic Rik positioning: miniaturize button after close button with 4px spacing
+            if (isEauTheme) {
+                // Authentic Eau positioning: miniaturize button after close button with 4px spacing
                 miniFrame = NSMakeRect(
-                    RIK_TITLEBAR_PADDING_LEFT + RIK_TITLEBAR_BUTTON_SIZE + 4, // 4px padding between buttons
-                    drawRect.size.height - RIK_TITLEBAR_BUTTON_SIZE - RIK_TITLEBAR_PADDING_TOP,
-                    RIK_TITLEBAR_BUTTON_SIZE, RIK_TITLEBAR_BUTTON_SIZE);
-                NSLog(@"Standalone: Our Rik miniFrame: %@", NSStringFromRect(miniFrame));
+                    EAU_TITLEBAR_PADDING_LEFT + EAU_TITLEBAR_BUTTON_SIZE + 4, // 4px padding between buttons
+                    drawRect.size.height - EAU_TITLEBAR_BUTTON_SIZE - EAU_TITLEBAR_PADDING_TOP,
+                    EAU_TITLEBAR_BUTTON_SIZE, EAU_TITLEBAR_BUTTON_SIZE);
+                NSLog(@"Standalone: Our Eau miniFrame: %@", NSStringFromRect(miniFrame));
                 NSLog(@"COMPARISON - Mini calc: x=%.1f+%.1f+4=%.1f, y=%.1f-%.1f-%.1f=%.1f",
-                      RIK_TITLEBAR_PADDING_LEFT, (float)RIK_TITLEBAR_BUTTON_SIZE,
-                      RIK_TITLEBAR_PADDING_LEFT + RIK_TITLEBAR_BUTTON_SIZE + 4,
-                      drawRect.size.height, (float)RIK_TITLEBAR_BUTTON_SIZE, RIK_TITLEBAR_PADDING_TOP,
-                      drawRect.size.height - RIK_TITLEBAR_BUTTON_SIZE - RIK_TITLEBAR_PADDING_TOP);
+                      EAU_TITLEBAR_PADDING_LEFT, (float)EAU_TITLEBAR_BUTTON_SIZE,
+                      EAU_TITLEBAR_PADDING_LEFT + EAU_TITLEBAR_BUTTON_SIZE + 4,
+                      drawRect.size.height, (float)EAU_TITLEBAR_BUTTON_SIZE, EAU_TITLEBAR_PADDING_TOP,
+                      drawRect.size.height - EAU_TITLEBAR_BUTTON_SIZE - EAU_TITLEBAR_PADDING_TOP);
             } else {
                 miniFrame = [theme miniaturizeButtonFrameForBounds:drawRect];
                 NSLog(@"Standalone: GSTheme miniaturizeButtonFrameForBounds returned: %@", NSStringFromRect(miniFrame));
             }
 
-            // Load Rik theme specific miniaturize button images
+            // Load Eau theme specific miniaturize button images
             NSImage *miniImage = nil;
             NSBundle *themeBundle = [theme bundle];
 
             if (themeBundle) {
-                // Try Rik-specific miniaturize button images
+                // Try Eau-specific miniaturize button images
                 NSArray *miniImageNames = @[@"MiniaturizeButton", @"minimize", @"Minimize", @"common_Miniaturize"];
                 NSArray *imageExtensions = @[@"png", @"tiff", @"jpg", @"gif"];
 
@@ -940,7 +940,7 @@ static NSMutableSet *fixedSizeWindows = nil;
                         if (imagePath) {
                             miniImage = [[NSImage alloc] initWithContentsOfFile:imagePath];
                             if (miniImage) {
-                                NSLog(@"Standalone: Found Rik miniaturize button: %@", imagePath);
+                                NSLog(@"Standalone: Found Eau miniaturize button: %@", imagePath);
                                 break;
                             }
                         }
@@ -949,7 +949,7 @@ static NSMutableSet *fixedSizeWindows = nil;
                 }
             }
 
-            // Fallback to system image if no Rik-specific image found
+            // Fallback to system image if no Eau-specific image found
             if (!miniImage) {
                 miniImage = [NSImage imageNamed:@"common_Miniaturize"];
                 NSLog(@"Standalone: Using fallback common_Miniaturize image");
@@ -967,13 +967,13 @@ static NSMutableSet *fixedSizeWindows = nil;
             }
 
             if (miniImage) {
-                // Draw authentic Rik miniaturize button using the exact color from NSWindow+Rik.m
+                // Draw authentic Eau miniaturize button using the exact color from NSWindow+Eau.m
                 NSColor *miniButtonColor = [NSColor colorWithDeviceRed: 0.9 green: 0.7 blue: 0.3 alpha: 1];
                 NSLog(@"Mini button color - R:%.3f G:%.3f B:%.3f A:%.3f",
                       [miniButtonColor redComponent], [miniButtonColor greenComponent],
                       [miniButtonColor blueComponent], [miniButtonColor alphaComponent]);
-                [URSThemeIntegration drawRikButtonBall:miniFrame withColor:miniButtonColor];
-                NSLog(@"Standalone: Drew authentic Rik miniaturize button ball with yellow color");
+                [URSThemeIntegration drawEauButtonBall:miniFrame withColor:miniButtonColor];
+                NSLog(@"Standalone: Drew authentic Eau miniaturize button ball with yellow color");
 
                 // Draw the 12x13 image centered in the 15x15 frame
                 NSRect imageRect = NSMakeRect(
@@ -1005,13 +1005,13 @@ static NSMutableSet *fixedSizeWindows = nil;
             NSButton *zoomButton = [theme standardWindowButton:NSWindowZoomButton forStyleMask:styleMask];
             if (zoomButton) {
                 NSRect zoomFrame;
-                if (isRikTheme) {
-                    // Authentic Rik positioning: zoom button after miniaturize button
+                if (isEauTheme) {
+                    // Authentic Eau positioning: zoom button after miniaturize button
                     zoomFrame = NSMakeRect(
-                        RIK_TITLEBAR_PADDING_LEFT + (RIK_TITLEBAR_BUTTON_SIZE + 4) * 2, // After miniaturize button
-                        drawRect.size.height - RIK_TITLEBAR_BUTTON_SIZE - RIK_TITLEBAR_PADDING_TOP,
-                        RIK_TITLEBAR_BUTTON_SIZE, RIK_TITLEBAR_BUTTON_SIZE);
-                    NSLog(@"Standalone: Authentic Rik zoomFrame: %@", NSStringFromRect(zoomFrame));
+                        EAU_TITLEBAR_PADDING_LEFT + (EAU_TITLEBAR_BUTTON_SIZE + 4) * 2, // After miniaturize button
+                        drawRect.size.height - EAU_TITLEBAR_BUTTON_SIZE - EAU_TITLEBAR_PADDING_TOP,
+                        EAU_TITLEBAR_BUTTON_SIZE, EAU_TITLEBAR_BUTTON_SIZE);
+                    NSLog(@"Standalone: Authentic Eau zoomFrame: %@", NSStringFromRect(zoomFrame));
                 } else {
                     // Calculate zoom button position based on miniaturize button + some spacing
                     NSRect miniFrame = [theme miniaturizeButtonFrameForBounds:drawRect];
@@ -1028,13 +1028,13 @@ static NSMutableSet *fixedSizeWindows = nil;
 
                 NSImage *buttonImage = [zoomButton image];
                 if (buttonImage) {
-                    // Draw authentic Rik zoom button using the exact color from NSWindow+Rik.m
+                    // Draw authentic Eau zoom button using the exact color from NSWindow+Eau.m
                     NSColor *zoomButtonColor = [NSColor colorWithDeviceRed: 0.322 green: 0.778 blue: 0.244 alpha: 1];
                     NSLog(@"Zoom button color - R:%.3f G:%.3f B:%.3f A:%.3f",
                           [zoomButtonColor redComponent], [zoomButtonColor greenComponent],
                           [zoomButtonColor blueComponent], [zoomButtonColor alphaComponent]);
-                    [URSThemeIntegration drawRikButtonBall:zoomFrame withColor:zoomButtonColor];
-                    NSLog(@"Standalone: Drew authentic Rik zoom button ball with green color");
+                    [URSThemeIntegration drawEauButtonBall:zoomFrame withColor:zoomButtonColor];
+                    NSLog(@"Standalone: Drew authentic Eau zoom button ball with green color");
 
                     // Draw the image centered in the 15x15 frame (most zoom images are also 12x13)
                     NSRect imageRect = NSMakeRect(

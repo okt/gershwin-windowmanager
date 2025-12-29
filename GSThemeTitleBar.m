@@ -101,17 +101,17 @@
                       state:state
                    andTitle:title ?: @""];
 
-    // Add properly positioned buttons using Rik theme specifications
-    // Based on Rik theme analysis: 17px spacing, LEFT-aligned (miniaturize first, then close)
+    // Add properly positioned buttons using Eau theme specifications
+    // Based on Eau theme analysis: 17px spacing, LEFT-aligned (miniaturize first, then close)
     float buttonSize = 13.0;
-    float buttonSpacing = 17.0;  // Rik theme uses 17px spacing per button
+    float buttonSpacing = 17.0;  // Eau theme uses 17px spacing per button
     float topMargin = 6.0;        // Center vertically in 24px titlebar
     float leftMargin = 2.0;       // Small margin from left edge
 
     if (styleMask & NSMiniaturizableWindowMask) {
         NSButton *miniButton = [theme standardWindowButton:NSWindowMiniaturizeButton forStyleMask:styleMask];
         if (miniButton && [miniButton image]) {
-            // Rik positions miniaturize button at LEFT edge (causes title to move right by 17px)
+            // Eau positions miniaturize button at LEFT edge (causes title to move right by 17px)
             NSRect miniFrame = NSMakeRect(
                 leftMargin,  // At left edge
                 topMargin,
