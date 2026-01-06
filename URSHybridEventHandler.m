@@ -312,6 +312,9 @@
         case XCB_MAP_REQUEST: {
             xcb_map_request_event_t *mapRequestEvent = (xcb_map_request_event_t *)event;
 
+            // Resize window to 70% of screen size before mapping
+            [self resizeWindowTo70Percent:mapRequestEvent->window];
+
             // Let XCBConnection handle the map request normally (this creates titlebar structure)
             [connection handleMapRequest:mapRequestEvent];
 
@@ -686,6 +689,106 @@
         }
     } @catch (NSException *exception) {
         NSLog(@"Exception in adjustBorderForFixedSizeWindow: %@", exception.reason);
+    }
+}
+
+- (void)resizeWindowTo70Percent:(xcb_window_t)clientWindowId {
+    @try {
+        // Get the screen dimensions
+        XCBScreen *screen = [[connection screens] objectAtIndex:0];
+        uint16_t screenWidth = [screen width];
+        uint16_t screenHeight = [screen height];
+        
+        // Calculate 70% of screen size
+        uint16_t newWidth = (uint16_t)(screenWidth * 0.7);
+        uint16_t newHeight = (uint16_t)(screenHeight * 0.7);
+        
+        // Golden ratio positioning (0.618)
+        // Position window at (1 - φ) ≈ 0.382 to lean left and top
+        uint16_t goldenPosX = (uint16_t)(screenWidth * 0.382);
+        uint16_t goldenPosY = (uint16_t)(screenHeight * 0.382);
+        
+        // Get current geometry to check if resizing is needed
+        xcb_get_geometry_cookie_t geom_cookie = xcb_get_geometry([connection connection], clientWindowId);
+        xcb_get_geometry_reply_t *geom_reply = xcb_get_geometry_reply([connection connection], geom_cookie, NULL);
+        
+        if (geom_reply) {
+            // Check if window is desktop or explicitly fullscreen - skip WM defaults for these
+            EWMHService *ewmhService = [EWMHService sharedInstanceWithConnection:connection];
+            
+            // Create an XCBWindow object from the xcb_window_t for EWMH queries
+            XCBWindow *queryWindow = [[XCBWindow alloc] initWithXCBWindow:clientWindowId andConnection:connection];
+            
+            // Check window type
+            void *windowTypeReply = [ewmhService getProperty:[ewmhService EWMHWMWindowType]
+                                                propertyType:XCB_ATOM_ATOM
+                                                   forWindow:queryWindow
+                                                      delete:NO
+                                                      length:1];
+            
+            BOOL isDesktopWindow = NO;
+            if (windowTypeReply) {
+                xcb_atom_t *atom = (xcb_atom_t *) xcb_get_property_value(windowTypeReply);
+                if (atom && *atom == [[ewmhService atomService] atomFromCachedAtomsWithKey:[ewmhService EWMHWMWindowTypeDesktop]]) {
+                    isDesktopWindow = YES;
+                }
+                free(windowTypeReply);
+            }
+            
+            // Check if window has fullscreen state
+            BOOL isFullscreenState = NO;
+            void *stateReply = [ewmhService getProperty:[ewmhService EWMHWMState]
+                                           propertyType:XCB_ATOM_ATOM
+                                              forWindow:queryWindow
+                                                 delete:NO
+                                                 length:UINT32_MAX];
+            
+            if (stateReply) {
+                xcb_atom_t *atoms = (xcb_atom_t *) xcb_get_property_value(stateReply);
+                uint32_t length = xcb_get_property_value_length(stateReply);
+                xcb_atom_t fullscreenAtom = [[ewmhService atomService] atomFromCachedAtomsWithKey:[ewmhService EWMHWMStateFullscreen]];
+                
+                for (uint32_t i = 0; i < length; i++) {
+                    if (atoms[i] == fullscreenAtom) {
+                        isFullscreenState = YES;
+                        break;
+                    }
+                }
+                free(stateReply);
+            }
+            
+            queryWindow = nil;
+            // Only apply WM defaults (70% + golden ratio) if:
+            // 1. Window is positioned at (0,0) - indicates no app positioning
+            // 2. AND window is full screen - indicates no app size constraints
+            // 3. AND window is not a desktop window
+            // 4. AND window is not explicitly requesting fullscreen
+            BOOL isAtOrigin = (geom_reply->x == 0 && geom_reply->y == 0);
+            BOOL isFullScreenSize = (geom_reply->width >= screenWidth && geom_reply->height >= screenHeight);
+            
+            if (isAtOrigin && isFullScreenSize && !isDesktopWindow && !isFullscreenState) {
+                NSLog(@"Window %u has no app-determined geometry (at 0,0 with full screen). Applying WM defaults: 70%% size at golden ratio position",
+                      clientWindowId);
+                
+                // Resize and position the window using WM defaults
+                uint32_t configValues[] = {goldenPosX, goldenPosY, newWidth, newHeight};
+                xcb_configure_window([connection connection],
+                                     clientWindowId,
+                                     XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y | 
+                                     XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT,
+                                     configValues);
+                [connection flush];
+            } else if (isDesktopWindow || isFullscreenState) {
+                NSLog(@"Window %u is desktop or fullscreen window. Skipping WM defaults (isDesktop=%d, isFullscreen=%d)",
+                      clientWindowId, isDesktopWindow, isFullscreenState);
+            } else {
+                NSLog(@"Window %u has app-determined geometry (%ux%u at %d,%d). Respecting app preferences",
+                      clientWindowId, geom_reply->width, geom_reply->height, geom_reply->x, geom_reply->y);
+            }
+            free(geom_reply);
+        }
+    } @catch (NSException *exception) {
+        NSLog(@"Exception in resizeWindowTo70Percent: %@", exception.reason);
     }
 }
 
