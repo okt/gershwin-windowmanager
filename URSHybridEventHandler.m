@@ -419,9 +419,10 @@
             // Re-apply GSTheme if this is a titlebar expose event
             [self handleTitlebarExpose:exposeEvent];
             
-            // Trigger compositor update if active
+            // Trigger compositor update for the exposed window
             if (self.compositingManager && [self.compositingManager compositingActive]) {
-                [self.compositingManager scheduleComposite];
+                // Update the specific window that was exposed for efficient redraw
+                [self.compositingManager updateWindow:exposeEvent->window];
             }
             break;
         }
@@ -716,6 +717,11 @@
         [titlebar putWindowBackgroundWithPixmap:[titlebar pixmap]];
         [titlebar drawArea:[titlebar windowRect]];
         [connection flush];
+        
+        // Notify compositor about the titlebar content change
+        if (self.compositingManager && [self.compositingManager compositingActive]) {
+            [self.compositingManager updateWindow:[frame window]];
+        }
 
     } @catch (NSException *exception) {
         NSLog(@"Exception in handleFocusChange: %@", exception.reason);
@@ -856,19 +862,24 @@
         for (XCBTitleBar *titlebar in integration.managedTitlebars) {
             if ([titlebar window] == exposedWindow) {
                 // This titlebar was exposed, re-apply GSTheme to override XCBKit redrawing
-                NSString *windowIdString = [NSString stringWithFormat:@"%u", exposedWindow];
-                XCBWindow *window = [[self.connection windowsMap] objectForKey:windowIdString];
+                // Find the frame by checking the titlebar's parent window
+                XCBWindow *parentWindow = [titlebar parentWindow];
+                XCBFrame *frame = nil;
+                
+                if (parentWindow && [parentWindow isKindOfClass:[XCBFrame class]]) {
+                    frame = (XCBFrame*)parentWindow;
+                }
 
-                if (window && [window isKindOfClass:[XCBFrame class]]) {
-                    XCBFrame *frame = (XCBFrame*)window;
-
+                if (frame) {
                     NSLog(@"Titlebar %u exposed, re-applying GSTheme", exposedWindow);
 
                     // Re-apply GSTheme rendering to override the expose redraw
-                    [URSThemeIntegration renderGSThemeToWindow:window
+                    [URSThemeIntegration renderGSThemeToWindow:frame
                                                          frame:frame
                                                          title:titlebar.windowTitle
                                                         active:YES];
+                    
+                    // Notify compositor about the content change (updateWindow already called in XCB_EXPOSE handler)
                 }
                 break;
             }
@@ -1065,6 +1076,11 @@
 
                             NSLog(@"Successfully applied GSTheme to titlebar for window %u: %@",
                                   windowId, titlebar.windowTitle ?: @"(untitled)");
+                            
+                            // Notify compositor about the new window content
+                            if (self.compositingManager && [self.compositingManager compositingActive]) {
+                                [self.compositingManager updateWindow:[frame window]];
+                            }
 
                             // Apply GSTheme again after a short delay to override any subsequent XCBKit drawing
                             [self performSelector:@selector(reapplyGSThemeToTitlebar:)
@@ -1110,6 +1126,11 @@
                                                          title:titlebar.windowTitle
                                                         active:YES];
                     NSLog(@"GSTheme reapplied to titlebar: %@", titlebar.windowTitle);
+                    
+                    // Notify compositor about the content change
+                    if (self.compositingManager && [self.compositingManager compositingActive]) {
+                        [self.compositingManager updateWindow:[frame window]];
+                    }
                     return;
                 }
             }
@@ -1254,6 +1275,11 @@
             [titlebar drawArea:titlebarRect];
 
             [connection flush];
+            
+            // Notify compositor about the window content change
+            if (self.compositingManager && [self.compositingManager compositingActive]) {
+                [self.compositingManager updateWindow:[frame window]];
+            }
         }
     } @catch (NSException *exception) {
         // Silently ignore exceptions during resize motion to avoid spam
@@ -1315,6 +1341,11 @@
             [titlebar drawArea:titleRect];
 
             [connection flush];
+            
+            // Notify compositor about the window content change
+            if (self.compositingManager && [self.compositingManager compositingActive]) {
+                [self.compositingManager updateWindow:[frame window]];
+            }
             NSLog(@"GSTheme: Titlebar redrawn after resize");
         }
     } @catch (NSException *exception) {

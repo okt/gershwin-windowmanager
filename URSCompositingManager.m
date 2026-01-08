@@ -650,6 +650,16 @@
     }
     
     URSCompositeWindow *cw = [self findCWindow:window];
+    
+    // If the window isn't directly tracked, it might be a child window (like a titlebar).
+    // Find its parent frame window.
+    if (!cw) {
+        xcb_window_t parentFrame = [self findParentFrameWindow:window];
+        if (parentFrame != XCB_NONE) {
+            cw = [self findCWindow:parentFrame];
+        }
+    }
+    
     if (!cw) {
         return;
     }
@@ -929,7 +939,13 @@
 }
 
 - (void)scheduleComposite {
-    [self scheduleRepair];
+    // If no damage is pending, damage the entire screen to ensure redraw
+    // This handles cases where external drawing (like GSTheme) needs compositing
+    if (self.allDamage == XCB_NONE) {
+        [self damageScreen];
+    } else {
+        [self scheduleRepair];
+    }
 }
 
 - (void)compositeScreen {
