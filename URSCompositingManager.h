@@ -38,6 +38,9 @@
 - (void)resizeWindow:(xcb_window_t)windowId x:(int16_t)x y:(int16_t)y 
                width:(uint16_t)width height:(uint16_t)height;
 
+// OPTIMIZATION: Notify compositor that stacking order changed (window raised/lowered)
+- (void)markStackingOrderDirty;
+
 // Render the composite screen
 - (void)compositeScreen;
 

@@ -118,6 +118,14 @@
 @property (assign, nonatomic) xcb_render_pictformat_t rootFormat;
 @property (assign, nonatomic) xcb_render_pictformat_t argbFormat;
 
+// OPTIMIZATION: Cached visual-to-format mappings (avoids repeated xcb_render_query_pict_formats)
+@property (strong, nonatomic) NSMutableDictionary<NSNumber *, NSNumber *> *visualFormatCache;
+@property (strong, nonatomic) NSMutableDictionary<NSNumber *, NSNumber *> *depthFormatCache;
+
+// OPTIMIZATION: Cached window stacking order (avoids xcb_query_tree on every paint)
+@property (strong, nonatomic) NSMutableArray<NSNumber *> *windowStackingOrder;
+@property (assign, nonatomic) BOOL stackingOrderDirty;
+
 @end
 
 @implementation URSCompositingManager
@@ -148,6 +156,14 @@
         _repairScheduled = NO;
         _lastRepairTime = 0;
         _cwindows = [[NSMutableDictionary alloc] init];
+        
+        // OPTIMIZATION: Initialize format caches
+        _visualFormatCache = [[NSMutableDictionary alloc] init];
+        _depthFormatCache = [[NSMutableDictionary alloc] init];
+        
+        // OPTIMIZATION: Initialize stacking order cache
+        _windowStackingOrder = [[NSMutableArray alloc] init];
+        _stackingOrderDirty = YES;
         
         // Initialize Gaussian shadow data
         _gaussianMap = make_gaussian_map((double)SHADOW_RADIUS, &_gaussianSize);
@@ -321,11 +337,18 @@
     self.rootFormat = XCB_NONE;
     self.argbFormat = XCB_NONE;
     
+    // OPTIMIZATION: Build depth-to-format cache while iterating
     xcb_render_pictforminfo_iterator_t iter = 
         xcb_render_query_pict_formats_formats_iterator(formats_reply);
     
     for (; iter.rem; xcb_render_pictforminfo_next(&iter)) {
         xcb_render_pictforminfo_t *fmt = iter.data;
+        
+        // Cache first format found for each depth
+        NSNumber *depthKey = @(fmt->depth);
+        if (!self.depthFormatCache[depthKey]) {
+            self.depthFormatCache[depthKey] = @(fmt->id);
+        }
         
         // Look for 24-bit format (RGB without alpha)
         if (fmt->depth == 24 && fmt->type == XCB_RENDER_PICT_TYPE_DIRECT) {
@@ -357,6 +380,29 @@
             }
         }
     }
+    
+    // OPTIMIZATION: Build visual-to-format cache from screens data
+    xcb_render_pictscreen_iterator_t screen_iter = 
+        xcb_render_query_pict_formats_screens_iterator(formats_reply);
+    
+    for (; screen_iter.rem; xcb_render_pictscreen_next(&screen_iter)) {
+        xcb_render_pictdepth_iterator_t depth_iter = 
+            xcb_render_pictscreen_depths_iterator(screen_iter.data);
+        
+        for (; depth_iter.rem; xcb_render_pictdepth_next(&depth_iter)) {
+            xcb_render_pictvisual_iterator_t visual_iter = 
+                xcb_render_pictdepth_visuals_iterator(depth_iter.data);
+            
+            for (; visual_iter.rem; xcb_render_pictvisual_next(&visual_iter)) {
+                NSNumber *visualKey = @(visual_iter.data->visual);
+                self.visualFormatCache[visualKey] = @(visual_iter.data->format);
+            }
+        }
+    }
+    
+    NSLog(@"[CompositingManager] Cached %lu visual formats, %lu depth formats", 
+          (unsigned long)[self.visualFormatCache count],
+          (unsigned long)[self.depthFormatCache count]);
     
     free(formats_reply);
     
@@ -721,6 +767,9 @@
     
     self.cwindows[@(windowId)] = cw;
     
+    // OPTIMIZATION: Mark stacking order dirty (will be rebuilt on next paint)
+    self.stackingOrderDirty = YES;
+    
     free(attr);
     free(geom);
     
@@ -752,6 +801,9 @@
     
     [self freeWindowData:cw delete:YES];
     [self.cwindows removeObjectForKey:@(windowId)];
+    
+    // OPTIMIZATION: Mark stacking order dirty
+    self.stackingOrderDirty = YES;
 }
 
 - (void)freeWindowData:(URSCompositeWindow *)cw delete:(BOOL)shouldDelete {
@@ -898,6 +950,8 @@
             [self createShadowForWindow:cw];
         }
         [self damageWindowArea:cw];
+        // OPTIMIZATION: Window mapping can change stacking order
+        self.stackingOrderDirty = YES;
     }
 }
 
@@ -916,6 +970,8 @@
     
     // Free window data but keep the damage object
     [self freeWindowData:cw delete:NO];
+    // OPTIMIZATION: Window unmapping can change stacking order
+    self.stackingOrderDirty = YES;
 }
 
 #pragma mark - Damage Handling
@@ -1137,14 +1193,10 @@
     [self damageScreen];
 }
 
-- (void)paintAll:(xcb_xfixes_region_t)region {
+// OPTIMIZATION: Rebuild stacking order cache from X server
+- (void)rebuildStackingOrderCache {
     xcb_connection_t *conn = [self.connection connection];
     
-    if (self.rootBuffer == XCB_NONE) {
-        return;
-    }
-    
-    // Get list of all windows in stacking order
     xcb_query_tree_cookie_t tree_cookie = xcb_query_tree(conn, self.rootWindow);
     xcb_query_tree_reply_t *tree_reply = xcb_query_tree_reply(conn, tree_cookie, NULL);
     
@@ -1152,8 +1204,37 @@
         return;
     }
     
+    [self.windowStackingOrder removeAllObjects];
+    
     xcb_window_t *children = xcb_query_tree_children(tree_reply);
     int num_children = xcb_query_tree_children_length(tree_reply);
+    
+    for (int i = 0; i < num_children; i++) {
+        [self.windowStackingOrder addObject:@(children[i])];
+    }
+    
+    free(tree_reply);
+    self.stackingOrderDirty = NO;
+}
+
+// OPTIMIZATION: Notify that stacking order changed (e.g., window raised/lowered)
+- (void)markStackingOrderDirty {
+    self.stackingOrderDirty = YES;
+}
+
+- (void)paintAll:(xcb_xfixes_region_t)region {
+    xcb_connection_t *conn = [self.connection connection];
+    
+    if (self.rootBuffer == XCB_NONE) {
+        return;
+    }
+    
+    // OPTIMIZATION: Use cached stacking order, only query tree when dirty
+    if (self.stackingOrderDirty || [self.windowStackingOrder count] == 0) {
+        [self rebuildStackingOrderCache];
+    }
+    
+    NSUInteger num_windows = [self.windowStackingOrder count];
     
     // Create a copy of the region for painting
     xcb_xfixes_region_t paint_region = xcb_generate_id(conn);
@@ -1168,8 +1249,8 @@
                                self.rootBuffer, bg_color, 1, &bg_rect);
     
     // Paint windows from bottom to top (so higher z-order windows are on top)
-    for (int i = 0; i < num_children; i++) {
-        xcb_window_t win = children[i];
+    for (NSUInteger i = 0; i < num_windows; i++) {
+        xcb_window_t win = [self.windowStackingOrder[i] unsignedIntValue];
         
         // Skip overlay and output windows (our own compositor windows)
         if (win == self.overlayWindow || win == self.outputWindow) {
@@ -1204,10 +1285,9 @@
                         0, 0,
                         self.screenWidth, self.screenHeight);
     
-    free(tree_reply);
     [self.connection flush];
     
-    // NSLog(@"[CompositingManager] paintAll: painted %d windows out of %d children", windowsPainted, num_children);
+    // NSLog(@"[CompositingManager] paintAll: painted %lu windows", (unsigned long)num_windows);
 }
 
 // Gaussian function for shadow blur
@@ -1587,6 +1667,13 @@ static uint8_t sum_gaussian(double *map, int map_size, double opacity,
 }
 
 - (xcb_render_pictformat_t)findVisualFormat:(xcb_visualid_t)visual {
+    // OPTIMIZATION: Use cached visual-to-format mapping (built during init)
+    NSNumber *cachedFormat = self.visualFormatCache[@(visual)];
+    if (cachedFormat) {
+        return [cachedFormat unsignedIntValue];
+    }
+    
+    // Fallback: query server if not in cache (should rarely happen)
     xcb_connection_t *conn = [self.connection connection];
     
     xcb_render_query_pict_formats_cookie_t formats_cookie = 
@@ -1615,6 +1702,8 @@ static uint8_t sum_gaussian(double *map, int map_size, double opacity,
             for (; visual_iter.rem; xcb_render_pictvisual_next(&visual_iter)) {
                 if (visual_iter.data->visual == visual) {
                     format = visual_iter.data->format;
+                    // Cache it for future lookups
+                    self.visualFormatCache[@(visual)] = @(format);
                     break;
                 }
             }
@@ -1628,6 +1717,13 @@ static uint8_t sum_gaussian(double *map, int map_size, double opacity,
 }
 
 - (xcb_render_pictformat_t)findFormatForDepth:(uint8_t)depth {
+    // OPTIMIZATION: Use cached depth-to-format mapping (built during init)
+    NSNumber *cachedFormat = self.depthFormatCache[@(depth)];
+    if (cachedFormat) {
+        return [cachedFormat unsignedIntValue];
+    }
+    
+    // Fallback: query server if not in cache
     xcb_connection_t *conn = [self.connection connection];
     
     xcb_render_query_pict_formats_cookie_t formats_cookie = 
@@ -1646,6 +1742,8 @@ static uint8_t sum_gaussian(double *map, int map_size, double opacity,
     for (; iter.rem; xcb_render_pictforminfo_next(&iter)) {
         if (iter.data->depth == depth) {
             format = iter.data->id;
+            // Cache it for future lookups
+            self.depthFormatCache[@(depth)] = @(format);
             break;
         }
     }
