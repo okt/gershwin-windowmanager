@@ -1160,9 +1160,8 @@
     xcb_xfixes_create_region(conn, paint_region, 0, NULL);
     xcb_xfixes_copy_region(conn, region, paint_region);
     
-    // Paint background in damaged areas
-    // No clip for background - fill entire buffer
-    xcb_xfixes_set_picture_clip_region(conn, self.rootBuffer, XCB_NONE, 0, 0);
+    // Paint background ONLY in damaged areas (performance optimization)
+    xcb_xfixes_set_picture_clip_region(conn, self.rootBuffer, region, 0, 0);
     xcb_render_color_t bg_color = {0x8000, 0x8000, 0x8000, 0xFFFF}; // Mid grey background
     xcb_rectangle_t bg_rect = {0, 0, self.screenWidth, self.screenHeight};
     xcb_render_fill_rectangles(conn, XCB_RENDER_PICT_OP_SRC,
@@ -1193,8 +1192,8 @@
     
     xcb_xfixes_destroy_region(conn, paint_region);
     
-    // Copy buffer to screen (overlay window)
-    xcb_xfixes_set_picture_clip_region(conn, self.rootPicture, XCB_NONE, 0, 0);
+    // Copy ONLY damaged region to screen (performance optimization)
+    xcb_xfixes_set_picture_clip_region(conn, self.rootPicture, region, 0, 0);
     xcb_render_composite(conn,
                         XCB_RENDER_PICT_OP_SRC,
                         self.rootBuffer,
@@ -1499,10 +1498,10 @@ static uint8_t sum_gaussian(double *map, int map_size, double opacity,
         int16_t shadowX = screenX + cw.shadowOffsetX;
         int16_t shadowY = screenY + cw.shadowOffsetY;
         
-        // Remove clip for shadow - we want it everywhere
-        xcb_xfixes_set_picture_clip_region(conn, self.rootBuffer, XCB_NONE, 0, 0);
+        // Use clip region for shadow (performance optimization)
+        xcb_xfixes_set_picture_clip_region(conn, self.rootBuffer, clipRegion, 0, 0);
         
-        // Try ARGB32 composite first (proper Gaussian gradient)
+        // Composite ARGB32 shadow with proper alpha blending
         xcb_render_composite(conn,
                             XCB_RENDER_PICT_OP_OVER,
                             cw.shadowPicture,       // Source: ARGB32 shadow with alpha
@@ -1514,11 +1513,10 @@ static uint8_t sum_gaussian(double *map, int map_size, double opacity,
                             shadowY,                // dst y
                             cw.shadowWidth,
                             cw.shadowHeight);
-        xcb_flush(conn);
     }
     
-    // Don't use clip region - paint entire window (simpler)
-    xcb_xfixes_set_picture_clip_region(conn, self.rootBuffer, XCB_NONE, 0, 0);
+    // Use clip region for window painting (performance optimization)
+    xcb_xfixes_set_picture_clip_region(conn, self.rootBuffer, clipRegion, 0, 0);
     
     // Ensure we have a picture for this window
     if (cw.picture == XCB_NONE) {
