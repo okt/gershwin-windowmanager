@@ -20,9 +20,9 @@
 
 // Shadow configuration
 #define SHADOW_RADIUS 12
-#define SHADOW_OFFSET_X (-3 * SHADOW_RADIUS / 2)  // -18
-#define SHADOW_OFFSET_Y (-3 * SHADOW_RADIUS / 2)  // -18
-#define SHADOW_OPACITY 0.75
+#define SHADOW_OFFSET_X -10
+#define SHADOW_OFFSET_Y -10
+#define SHADOW_OPACITY 0.66
 
 // Per-window compositing data
 @interface URSCompositeWindow : NSObject
@@ -1194,7 +1194,6 @@
     xcb_xfixes_destroy_region(conn, paint_region);
     
     // Copy buffer to screen (overlay window)
-    // DEBUG: Copy ENTIRE buffer to screen (not just damaged region)
     xcb_xfixes_set_picture_clip_region(conn, self.rootPicture, XCB_NONE, 0, 0);
     xcb_render_composite(conn,
                         XCB_RENDER_PICT_OP_SRC,
@@ -1205,7 +1204,6 @@
                         0, 0,
                         0, 0,
                         self.screenWidth, self.screenHeight);
-    NSLog(@"[DEBUG] Copied entire buffer %dx%d to screen", self.screenWidth, self.screenHeight);
     
     free(tree_reply);
     [self.connection flush];

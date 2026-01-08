@@ -569,9 +569,10 @@
         }
         default: {
             // Check for extension events (damage, etc.)
-            // Log all unhandled events to see what we're missing
+            // Only log truly unhandled events (not damage events)
             uint8_t responseType = event->response_type & ~0x80;
-            if (responseType > 64) { // Extension events are typically > 64
+            uint8_t damageBase = self.compositingManager ? [self.compositingManager damageEventBase] : 0;
+            if (responseType > 64 && responseType != damageBase) { // Extension events except DAMAGE
                 NSLog(@"[Event] Unhandled extension event: response_type=%u", responseType);
             }
             [self handleExtensionEvent:event];
@@ -613,8 +614,6 @@
     if (responseType == damageEventBase + XCB_DAMAGE_NOTIFY) {
         // This is a DAMAGE notify event
         xcb_damage_notify_event_t *damageEvent = (xcb_damage_notify_event_t *)event;
-        
-        NSLog(@"[DamageEvent] Window %u damaged, recompositing...", damageEvent->drawable);
         
         // The drawable field contains the window that was damaged
         [self.compositingManager handleDamageNotify:damageEvent->drawable];
