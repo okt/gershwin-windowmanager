@@ -63,6 +63,10 @@ XCB_EVENT_MASK_KEY_PRESS
 - (void) setWindowTitle:(NSString*) title;
 - (NSString*) windowTitle;
 
+// OPTIMIZATION: Set internal title without expensive Cairo rendering
+// Used when GSTheme will handle the actual rendering
+- (void) setInternalTitle:(NSString*) title;
+
 - (xcb_arc_t*) arcs;
 
 // GSTheme integration

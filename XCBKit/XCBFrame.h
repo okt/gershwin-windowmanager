@@ -18,7 +18,8 @@
 typedef NS_ENUM(NSInteger, childrenMask)
 {
     TitleBar = 0,
-    ClientWindow = 1
+    ClientWindow = 1,
+    ResizeHandle = 2
 };
 
 @interface XCBFrame : XCBWindow
@@ -50,6 +51,8 @@ typedef NS_ENUM(NSInteger, childrenMask)
 - (void) configureClient;
 - (MousePosition) mouseIsOnWindowBorderForEvent:(xcb_motion_notify_event_t *)anEvent;
 - (void) restoreDimensionAndPosition;
+- (void) createResizeHandle;
+- (void) updateResizeHandlePosition;
 
 
  /********************************

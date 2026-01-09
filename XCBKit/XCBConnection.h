@@ -48,6 +48,13 @@
 @property (nonatomic, assign, readonly) BOOL isAWindowManager;
 @property (nonatomic, assign) BOOL isWindowsMapUpdated;
 
+// Cached workarea for drag performance
+@property (nonatomic, assign) BOOL workareaValid;
+@property (nonatomic, assign) int32_t cachedWorkareaX;
+@property (nonatomic, assign) int32_t cachedWorkareaY;
+@property (nonatomic, assign) uint32_t cachedWorkareaWidth;
+@property (nonatomic, assign) uint32_t cachedWorkareaHeight;
+
 + (XCBConnection *) sharedConnectionAsWindowManager:(BOOL)asWindowManager;
 - (xcb_connection_t *) connection;
 /**

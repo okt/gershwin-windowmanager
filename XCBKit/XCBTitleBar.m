@@ -398,6 +398,12 @@
         NSLog(@"No title to set to the window.");
         return;
     }
+    
+    // Skip Cairo text rendering if GSTheme will handle it
+    if ([self isGSThemeActive]) {
+        titleIsSet = YES;
+        return;
+    }
 
     XCBWindow *rootWindow = [parentWindow parentWindow];
     XCBScreen *screen = [rootWindow screen];
@@ -413,6 +419,14 @@
     screen = nil;
     visual = nil;
     rootWindow = nil;
+}
+
+// OPTIMIZATION: Set internal title without Cairo rendering
+// Used when GSTheme will handle the actual titlebar rendering
+- (void) setInternalTitle:(NSString *) title
+{
+    windowTitle = title;
+    // Don't set titleIsSet here - allows setWindowTitle to work if needed later
 }
 
 - (NSString*) windowTitle

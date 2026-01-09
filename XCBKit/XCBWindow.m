@@ -1012,7 +1012,7 @@
 - (void) refreshBorder
 {
     NSLog(@"Refreshing borders");
-    uint32_t values[] = {3};
+    uint32_t values[] = {0};
     xcb_configure_window([connection connection], window, XCB_CONFIG_WINDOW_BORDER_WIDTH, values);
 }
 

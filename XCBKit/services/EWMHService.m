@@ -710,6 +710,12 @@
             TitleBarSettingsService *settingsService = [TitleBarSettingsService sharedInstance];
 
             uint16_t titleHgt = [settingsService heightDefined] ? [settingsService height] : [settingsService defaultHeight];
+            
+            // Read workarea to respect struts
+            int32_t workareaX = 0, workareaY = 0;
+            uint32_t workareaWidth = [screen width], workareaHeight = [screen height];
+            XCBWindow *rootWindow = [screen rootWindow];
+            [self readWorkareaForRootWindow:rootWindow x:&workareaX y:&workareaY width:&workareaWidth height:&workareaHeight];
 
             if (maxHorz)
             {
@@ -721,9 +727,10 @@
                     frame = (XCBFrame*)[aWindow parentWindow];
                     titleBar = (XCBTitleBar*)[frame childWindowForKey:TitleBar];
 
-                    /*** frame size and position ***/
-                    size = XCBMakeSize([screen width], [frame windowRect].size.height);
-                    [frame maximizeToSize:size andPosition:[frame windowRect].position];
+                    /*** frame size and position - use workarea width ***/
+                    size = XCBMakeSize(workareaWidth, [frame windowRect].size.height);
+                    position = XCBMakePoint(workareaX, [frame windowRect].position.y);
+                    [frame maximizeToSize:size andPosition:position];
 
                     /*** titlebar size and position ***/
                     size = XCBMakeSize([frame windowRect].size.width, titleHgt);
@@ -740,8 +747,8 @@
                 }
                 else
                 {
-                    size = XCBMakeSize([screen width], [aWindow windowRect].size.height);
-                    position = XCBMakePoint([aWindow windowRect].position.x, [aWindow windowRect].position.y);
+                    size = XCBMakeSize(workareaWidth, [aWindow windowRect].size.height);
+                    position = XCBMakePoint(workareaX, [aWindow windowRect].position.y);
                 }
 
                 [aWindow maximizeToSize:size andPosition:position];
@@ -765,6 +772,12 @@
             TitleBarSettingsService *settingsService = [TitleBarSettingsService sharedInstance];
 
             uint16_t titleHgt = [settingsService heightDefined] ? [settingsService height] : [settingsService defaultHeight];
+            
+            // Read workarea to respect struts
+            int32_t workareaX = 0, workareaY = 0;
+            uint32_t workareaWidth = [screen width], workareaHeight = [screen height];
+            XCBWindow *rootWindow = [screen rootWindow];
+            [self readWorkareaForRootWindow:rootWindow x:&workareaX y:&workareaY width:&workareaWidth height:&workareaHeight];
 
             if (maxVert)
             {
@@ -776,9 +789,10 @@
                     frame = (XCBFrame*)[aWindow parentWindow];
                     titleBar = (XCBTitleBar*)[frame childWindowForKey:TitleBar];
 
-                    /*** frame size and position ***/
-                    size = XCBMakeSize([frame windowRect].size.width, [screen height]);
-                    [frame maximizeToSize:size andPosition:[frame windowRect].position];
+                    /*** frame size and position - use workarea height ***/
+                    size = XCBMakeSize([frame windowRect].size.width, workareaHeight);
+                    position = XCBMakePoint([frame windowRect].position.x, workareaY);
+                    [frame maximizeToSize:size andPosition:position];
 
                     /*** titlebar size and position ***/
                     size = XCBMakeSize(size.width, titleHgt);
@@ -794,8 +808,8 @@
                 }
                 else
                 {
-                    size = XCBMakeSize([aWindow windowRect].size.width, [screen height]);
-                    position = XCBMakePoint([aWindow windowRect].position.x, [aWindow windowRect].position.y);
+                    size = XCBMakeSize([aWindow windowRect].size.width, workareaHeight);
+                    position = XCBMakePoint([aWindow windowRect].position.x, workareaY);
                 }
 
                 [aWindow maximizeToSize:size andPosition:position];
@@ -821,6 +835,12 @@
             XCBPoint position;
 
             uint16_t titleHgt = [settingsService heightDefined] ? [settingsService height] : [settingsService defaultHeight];
+            
+            // Read workarea to respect struts (fullscreen should also respect workarea)
+            int32_t workareaX = 0, workareaY = 0;
+            uint32_t workareaWidth = [screen width], workareaHeight = [screen height];
+            XCBWindow *rootWindow = [screen rootWindow];
+            [self readWorkareaForRootWindow:rootWindow x:&workareaX y:&workareaY width:&workareaWidth height:&workareaHeight];
 
             if (fullscr)
             {
@@ -832,13 +852,14 @@
                     frame = (XCBFrame*)[aWindow parentWindow];
                     titleBar = (XCBTitleBar*)[frame childWindowForKey:TitleBar];
 
-                    /*** frame size and position ***/
-                    size = XCBMakeSize([screen width], [screen height]);
-                    position = XCBMakePoint(0.0,0.0);
+                    /*** frame size and position - use workarea ***/
+                    size = XCBMakeSize(workareaWidth, workareaHeight);
+                    position = XCBMakePoint(workareaX, workareaY);
                     [frame maximizeToSize:size andPosition:position];
 
                     /*** titlebar size and position ***/
                     size = XCBMakeSize([frame windowRect].size.width, titleHgt);
+                    position = XCBMakePoint(0.0, 0.0);
                     [titleBar maximizeToSize:size andPosition:position];
                     [titleBar drawTitleBarComponents];
 
@@ -851,8 +872,8 @@
                 }
                 else
                 {
-                    size = XCBMakeSize([screen width], [screen height]);
-                    position = XCBMakePoint(0, 0);
+                    size = XCBMakeSize(workareaWidth, workareaHeight);
+                    position = XCBMakePoint(workareaX, workareaY);
                 }
 
 
@@ -1105,6 +1126,179 @@
                            withType:XCB_ATOM_ATOM
                          withFormat:32 withDataLength:size
                            withData:atomList];
+}
+
+#pragma mark - ICCCM/EWMH Strut and Workarea Support
+
+- (BOOL) readStrutForWindow:(XCBWindow*)aWindow strut:(uint32_t[4])outStrut
+{
+    if (!aWindow) {
+        return NO;
+    }
+    
+    // Read _NET_WM_STRUT property (4 cardinals: left, right, top, bottom)
+    void *reply = [self getProperty:EWMHWMStrut
+                       propertyType:XCB_ATOM_CARDINAL
+                          forWindow:aWindow
+                             delete:NO
+                             length:4];
+    
+    if (!reply) {
+        return NO;
+    }
+    
+    xcb_get_property_reply_t *propReply = (xcb_get_property_reply_t *)reply;
+    
+    if (propReply->type == XCB_ATOM_NONE || propReply->length < 4) {
+        free(reply);
+        return NO;
+    }
+    
+    uint32_t *values = (uint32_t *)xcb_get_property_value(propReply);
+    outStrut[0] = values[0]; // left
+    outStrut[1] = values[1]; // right
+    outStrut[2] = values[2]; // top
+    outStrut[3] = values[3]; // bottom
+    
+    free(reply);
+    return YES;
+}
+
+- (BOOL) readStrutPartialForWindow:(XCBWindow*)aWindow strut:(uint32_t[12])outStrut
+{
+    if (!aWindow) {
+        return NO;
+    }
+    
+    // Read _NET_WM_STRUT_PARTIAL property (12 cardinals)
+    // left, right, top, bottom, 
+    // left_start_y, left_end_y, right_start_y, right_end_y,
+    // top_start_x, top_end_x, bottom_start_x, bottom_end_x
+    void *reply = [self getProperty:EWMHWMStrutPartial
+                       propertyType:XCB_ATOM_CARDINAL
+                          forWindow:aWindow
+                             delete:NO
+                             length:12];
+    
+    if (!reply) {
+        return NO;
+    }
+    
+    xcb_get_property_reply_t *propReply = (xcb_get_property_reply_t *)reply;
+    
+    if (propReply->type == XCB_ATOM_NONE || propReply->length < 12) {
+        free(reply);
+        return NO;
+    }
+    
+    uint32_t *values = (uint32_t *)xcb_get_property_value(propReply);
+    for (int i = 0; i < 12; i++) {
+        outStrut[i] = values[i];
+    }
+    
+    free(reply);
+    return YES;
+}
+
+- (void) updateWorkareaForRootWindow:(XCBWindow*)rootWindow 
+                                   x:(int32_t)x 
+                                   y:(int32_t)y 
+                               width:(uint32_t)width 
+                              height:(uint32_t)height
+{
+    if (!rootWindow) {
+        NSLog(@"[EWMH] Cannot update workarea: no root window");
+        return;
+    }
+    
+    // _NET_WORKAREA is an array of 4 CARDINALs per desktop: x, y, width, height
+    // For now we support a single desktop
+    uint32_t workarea[4] = { (uint32_t)x, (uint32_t)y, width, height };
+    
+    NSLog(@"[EWMH] Setting _NET_WORKAREA: x=%d, y=%d, width=%u, height=%u", x, y, width, height);
+    
+    [self changePropertiesForWindow:rootWindow
+                           withMode:XCB_PROP_MODE_REPLACE
+                       withProperty:EWMHWorkarea
+                           withType:XCB_ATOM_CARDINAL
+                         withFormat:32
+                     withDataLength:4
+                           withData:workarea];
+}
+
+- (BOOL) isWindowTypeDock:(XCBWindow*)aWindow
+{
+    if (!aWindow) {
+        return NO;
+    }
+    
+    void *reply = [self getProperty:EWMHWMWindowType
+                       propertyType:XCB_ATOM_ATOM
+                          forWindow:aWindow
+                             delete:NO
+                             length:UINT32_MAX];
+    
+    if (!reply) {
+        return NO;
+    }
+    
+    xcb_get_property_reply_t *propReply = (xcb_get_property_reply_t *)reply;
+    
+    if (propReply->type == XCB_ATOM_NONE || propReply->length == 0) {
+        free(reply);
+        return NO;
+    }
+    
+    xcb_atom_t *atoms = (xcb_atom_t *)xcb_get_property_value(propReply);
+    xcb_atom_t dockAtom = [atomService atomFromCachedAtomsWithKey:EWMHWMWindowTypeDock];
+    
+    BOOL isDock = NO;
+    for (uint32_t i = 0; i < propReply->length; i++) {
+        if (atoms[i] == dockAtom) {
+            isDock = YES;
+            break;
+        }
+    }
+    
+    free(reply);
+    return isDock;
+}
+
+- (BOOL) readWorkareaForRootWindow:(XCBWindow*)rootWindow x:(int32_t*)outX y:(int32_t*)outY width:(uint32_t*)outWidth height:(uint32_t*)outHeight
+{
+    if (!rootWindow) {
+        return NO;
+    }
+    
+    // Read _NET_WORKAREA property (4 cardinals per desktop: x, y, width, height)
+    void *reply = [self getProperty:EWMHWorkarea
+                       propertyType:XCB_ATOM_CARDINAL
+                          forWindow:rootWindow
+                             delete:NO
+                             length:4];
+    
+    if (!reply) {
+        return NO;
+    }
+    
+    xcb_get_property_reply_t *propReply = (xcb_get_property_reply_t *)reply;
+    
+    if (propReply->type == XCB_ATOM_NONE || propReply->length < 4) {
+        free(reply);
+        return NO;
+    }
+    
+    uint32_t *values = (uint32_t *)xcb_get_property_value(propReply);
+    if (outX) *outX = (int32_t)values[0];
+    if (outY) *outY = (int32_t)values[1];
+    if (outWidth) *outWidth = values[2];
+    if (outHeight) *outHeight = values[3];
+    
+    NSLog(@"[EWMH] Read _NET_WORKAREA: x=%d, y=%d, width=%u, height=%u", 
+          values[0], values[1], values[2], values[3]);
+    
+    free(reply);
+    return YES;
 }
 
 

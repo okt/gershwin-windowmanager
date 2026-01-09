@@ -11,6 +11,7 @@
 #import "services/ICCCMService.h"
 #import "services/TitleBarSettingsService.h"
 #import "utils/CairoDrawer.h"
+#import <AppKit/NSScroller.h>
 
 
 @implementation XCBFrame
@@ -191,26 +192,48 @@
     [titleBar onScreen];
     [titleBar updateAttributes];
     [titleBar setIsMapped:YES];
+    
+    // OPTIMIZATION: Only create pixmaps - skip Cairo drawing if GSTheme will override
+    // GSTheme integration in URSHybridEventHandler will render the titlebar contents
+    // Creating pixmaps is still needed as GSTheme renders to them
     [titleBar createPixmap];
-    [titleBar generateButtons];
+    
+    // OPTIMIZATION: Skip button generation and Cairo drawing when GSTheme is active
+    // These operations are expensive and get completely overwritten by GSTheme
+    if (![titleBar isGSThemeActive]) {
+        [titleBar generateButtons];
+        [titleBar setButtonsAbove:YES];
+        [titleBar drawTitleBarComponentsPixmaps];
+        [titleBar putWindowBackgroundWithPixmap:[titleBar pixmap]];
+        [titleBar putButtonsBackgroundPixmaps:YES];
+        [titleBar setWindowTitle:windowTitle];
+    }
+    
     [titleBar setIsAbove:YES];
-    [titleBar setButtonsAbove:YES];
-    [titleBar drawTitleBarComponentsPixmaps];
-    [titleBar putWindowBackgroundWithPixmap:[titleBar pixmap]];
-    [titleBar putButtonsBackgroundPixmaps:YES];
     [clientWindow setDecorated:YES];
     [clientWindow setWindowBorderWidth:0];
     [connection mapWindow:titleBar];
-    [titleBar setWindowTitle:windowTitle];
+    
+    // Store title for later GSTheme rendering
+    [titleBar setInternalTitle:windowTitle];
 
-    XCBPoint position = XCBMakePoint(0, height - 1);
+    // Position client window directly below titlebar with no gap
+    XCBPoint position = XCBMakePoint(0, height);
     [connection reparentWindow:clientWindow toWindow:self position:position];
     [connection mapWindow:clientWindow];
     uint32_t border[] = {0};
+    // Ensure no borders on frame window
+    xcb_configure_window([connection connection], window, XCB_CONFIG_WINDOW_BORDER_WIDTH, border);
+    // Ensure no borders on client window
     xcb_configure_window([connection connection], [clientWindow window], XCB_CONFIG_WINDOW_BORDER_WIDTH, border);
     
     // Flush to ensure reparent and map operations complete before continuing
     [connection flush];
+    
+    // Create resize handle for resizable windows with decorations only
+    if ([clientWindow canResize] && [clientWindow decorated]) {
+        [self createResizeHandle];
+    }
 
     titleBar = nil;
     clientWindow = nil;
@@ -221,6 +244,66 @@
     settings = nil;
 
     free(reply);
+}
+
+- (void)createResizeHandle
+{
+    XCBScreen *scr = [parentWindow screen];
+    
+    // Get scrollbar width from current theme
+    CGFloat scrollerWidth = [NSScroller scrollerWidth];
+    uint16_t handleSize = (uint16_t)scrollerWidth;
+    
+    // Create a square at bottom-right matching scrollbar width
+    xcb_window_t resizeHandleWindow = xcb_generate_id([connection connection]);
+    
+    XCBRect frameRect = [self windowRect];
+    int16_t handleX = frameRect.size.width - handleSize;
+    int16_t handleY = frameRect.size.height - handleSize;
+    
+    uint32_t mask = XCB_CW_BACK_PIXEL | XCB_CW_EVENT_MASK | XCB_CW_CURSOR;
+    uint32_t values[3];
+    
+    // Blue color for the handle
+    xcb_alloc_color_cookie_t color_cookie = xcb_alloc_color([connection connection],
+                                                             [scr screen]->default_colormap,
+                                                             0, 0, 65535); // Blue: RGB(0,0,255)
+    xcb_alloc_color_reply_t *color_reply = xcb_alloc_color_reply([connection connection], color_cookie, NULL);
+    uint32_t blue_pixel = color_reply ? color_reply->pixel : [scr screen]->white_pixel;
+    free(color_reply);
+    
+    // Get diagonal resize cursor (bottom-right)
+    xcb_cursor_t resizeCursor = [[self cursor] selectResizeCursorForPosition:BottomRightCorner];
+    
+    values[0] = blue_pixel;
+    values[1] = XCB_EVENT_MASK_BUTTON_PRESS | XCB_EVENT_MASK_BUTTON_RELEASE | 
+                XCB_EVENT_MASK_POINTER_MOTION | XCB_EVENT_MASK_ENTER_WINDOW | XCB_EVENT_MASK_LEAVE_WINDOW;
+    values[2] = resizeCursor;
+    
+    xcb_create_window([connection connection],
+                      XCB_COPY_FROM_PARENT,
+                      resizeHandleWindow,
+                      window, // Parent is the frame
+                      handleX, handleY,
+                      handleSize, handleSize,
+                      0, // no border
+                      XCB_WINDOW_CLASS_INPUT_OUTPUT,
+                      [scr screen]->root_visual,
+                      mask,
+                      values);
+    
+    // Create XCBWindow wrapper and register it
+    XCBWindow *resizeHandle = [[XCBWindow alloc] initWithXCBWindow:resizeHandleWindow andConnection:connection];
+    [resizeHandle setParentWindow:self];
+    [self addChildWindow:resizeHandle withKey:ResizeHandle];
+    [connection registerWindow:resizeHandle];
+    
+    // Map the resize handle
+    xcb_map_window([connection connection], resizeHandleWindow);
+    [connection flush];
+    
+    NSLog(@"Created resize handle for frame %u at position (%d, %d) with size %u (scrollbar width)", 
+          window, handleX, handleY, handleSize);
 }
 
 /*** performance while resizing pixel by pixel is critical so we do everything we can to improve it also if the message signature looks bad ***/
@@ -266,7 +349,30 @@
         resizeFromAngleForEvent(anEvent, aXcbConnection, self, minWidthHint, minHeightHint, titleHeight);
         //[self configureClient];
     }
+    
+    // Update resize handle position if it exists
+    [self updateResizeHandlePosition];
 
+}
+
+- (void)updateResizeHandlePosition
+{
+    XCBWindow *resizeHandle = [self childWindowForKey:ResizeHandle];
+    if (resizeHandle) {
+        // Get current scrollbar width from theme
+        CGFloat scrollerWidth = [NSScroller scrollerWidth];
+        uint16_t handleSize = (uint16_t)scrollerWidth;
+        
+        XCBRect frameRect = [self windowRect];
+        int16_t handleX = frameRect.size.width - handleSize;
+        int16_t handleY = frameRect.size.height - handleSize;
+        
+        uint32_t values[2] = {handleX, handleY};
+        xcb_configure_window([connection connection], 
+                           [resizeHandle window], 
+                           XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y, 
+                           values);
+    }
 }
 
 void resizeFromRightForEvent(xcb_motion_notify_event_t *anEvent,
@@ -313,6 +419,10 @@ void resizeFromRightForEvent(xcb_motion_notify_event_t *anEvent,
     xcb_configure_window(connection, [frame window], XCB_CONFIG_WINDOW_WIDTH, &values);
     xcb_configure_window(connection, [titleBar window], XCB_CONFIG_WINDOW_WIDTH, &values);
     xcb_configure_window(connection, [clientWindow window], XCB_CONFIG_WINDOW_WIDTH, &values);
+    
+    // Flush to ensure smooth resizing updates
+    xcb_flush(connection);
+    
     frameRect.size.width = anEvent->event_x;
 
     [frame setWindowRect:frameRect];
@@ -396,6 +506,9 @@ void resizeFromLeftForEvent(xcb_motion_notify_event_t *anEvent,
     values[0] = 0;
     xcb_configure_window(connection, [titleBar window], XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_WIDTH, &values);
     xcb_configure_window(connection, [clientWindow window], XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_WIDTH, &values);
+    
+    // Flush to ensure smooth resizing updates
+    xcb_flush(connection);
 
     [frame setWindowRect:rect];
     [frame setOriginalRect:rect];
@@ -456,6 +569,10 @@ void resizeFromBottomForEvent(xcb_motion_notify_event_t *anEvent,
     clientRect.size.height = values[0];
     values[0] = anEvent->event_y;
     xcb_configure_window(connection, [frame window], XCB_CONFIG_WINDOW_HEIGHT, &values);
+    
+    // Flush to ensure smooth resizing updates
+    xcb_flush(connection);
+    
     [clientWindow setWindowRect:clientRect];
     [clientWindow setOriginalRect:clientRect];
 
@@ -491,12 +608,12 @@ void resizeFromTopForEvent(xcb_motion_notify_event_t *anEvent,
         // When hitting minimum height, maintain the bottom edge position
         // Calculate the correct top position to preserve bottom edge
         int bottomEdge = rect.position.y + rect.size.height;
-        int newY = bottomEdge - (minH + titleBarHeight);
+        int newY = bottomEdge - (minH + titleBarHeight + 2);  // +2 for top and bottom borders
 
-        rect.size.height = minH + titleBarHeight;
+        rect.size.height = minH + titleBarHeight + 2;  // +2 for borders
         rect.position.y = newY;
         clientRect.size.height = minH;
-        clientRect.position.y = titleBarHeight - 1; // Relative to frame
+        clientRect.position.y = 1 + titleBarHeight;  // Inside top border + titlebar
 
         values[0] = clientRect.position.y;
         values[1] = clientRect.size.height;
@@ -524,17 +641,20 @@ void resizeFromTopForEvent(xcb_motion_notify_event_t *anEvent,
 
     rect.position.y = values[0];
     rect.size.height = values[1];
-    values[0] = 0;
+    values[0] = 1;  // Inside top border
 
     xcb_configure_window(connection, [titleBar window], XCB_CONFIG_WINDOW_Y, &values);
 
     titleBarRect.position.y = values[0];
 
-    values[0] = titleBarHeight - 1;
-    values[1] = rect.size.height - titleBarHeight;
+    values[0] = 1 + titleBarHeight;  // Inside top border + titlebar height
+    values[1] = rect.size.height - titleBarHeight;  // Subtract titlebar height only
 
     xcb_configure_window(connection, [clientWindow window], XCB_CONFIG_WINDOW_Y | XCB_CONFIG_WINDOW_HEIGHT, &values);
     clientRect.size.height = values[1];
+    
+    // Flush to ensure smooth resizing updates
+    xcb_flush(connection);
 
     [frame setWindowRect:rect];
     [frame setOriginalRect:rect];
@@ -609,6 +729,9 @@ void resizeFromAngleForEvent(xcb_motion_notify_event_t *anEvent,
     xcb_configure_window(connection, [titleBar window], XCB_CONFIG_WINDOW_WIDTH, &values);
     values[1] = values[1] - titleBarHeight;
     xcb_configure_window(connection, [clientWindow window], XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT, &values);
+    
+    // Flush to ensure smooth resizing updates
+    xcb_flush(connection);
 
     rect.size.width = anEvent->event_x;
     rect.size.height = anEvent->event_y;
@@ -638,7 +761,8 @@ void resizeFromAngleForEvent(xcb_motion_notify_event_t *anEvent,
 
     uint32_t values[] = {(uint32_t)pos.x, (uint32_t)pos.y};
     xcb_configure_window([connection connection], window, XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y, values);
-    xcb_flush([connection connection]);
+    // PERFORMANCE FIX: Don't flush on every motion event - let the event loop batch flushes
+    // xcb_flush([connection connection]);
 
     // Update internal state only - skip expensive rect operations during drag
     XCBRect rect = [super windowRect];

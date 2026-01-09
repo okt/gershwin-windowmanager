@@ -196,6 +196,17 @@
 - (void) updateNetWmState:(XCBWindow*) aWindow;
 - (uint32_t) netWMPidForWindow:(XCBWindow *)aWindow;
 
+// ICCCM/EWMH Strut and Workarea support
+- (BOOL) readStrutForWindow:(XCBWindow*)aWindow strut:(uint32_t[4])outStrut;
+- (BOOL) readStrutPartialForWindow:(XCBWindow*)aWindow strut:(uint32_t[12])outStrut;
+- (void) updateWorkareaForRootWindow:(XCBWindow*)rootWindow 
+                                   x:(int32_t)x 
+                                   y:(int32_t)y 
+                               width:(uint32_t)width 
+                              height:(uint32_t)height;
+- (BOOL) isWindowTypeDock:(XCBWindow*)aWindow;
+- (BOOL) readWorkareaForRootWindow:(XCBWindow*)rootWindow x:(int32_t*)outX y:(int32_t*)outY width:(uint32_t*)outWidth height:(uint32_t*)outHeight;
+
 - (void) dealloc;
 
 @end

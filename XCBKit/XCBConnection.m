@@ -722,6 +722,14 @@ static XCBConnection *sharedInstance;
             if (*atom == [[ewmhService atomService] atomFromCachedAtomsWithKey:[ewmhService EWMHWMWindowTypeDock]])
             {
                 NSLog(@"Dock window %u to be registered", [window window]);
+                
+                // Select PropertyChange events on dock windows to track strut changes
+                uint32_t dockMask[] = {XCB_EVENT_MASK_STRUCTURE_NOTIFY | XCB_EVENT_MASK_PROPERTY_CHANGE};
+                xcb_change_window_attributes([self connection],
+                                              [window window],
+                                              XCB_CW_EVENT_MASK,
+                                              dockMask);
+                
                 [self registerWindow:window];
                 [self mapWindow:window];
                 [window setDecorated:NO];
@@ -916,9 +924,9 @@ static XCBConnection *sharedInstance;
     [request setParentWindow:[screen rootWindow]];
     [request setXPosition:[window windowRect].position.x];
     [request setYPosition:[window windowRect].position.y];
-    [request setWidth:[window windowRect].size.width + 1];
+    [request setWidth:[window windowRect].size.width];
     [request setHeight:[window windowRect].size.height + titleHeight];
-    [request setBorderWidth:1];
+    [request setBorderWidth:0];
     [request setXcbClass:XCB_WINDOW_CLASS_INPUT_OUTPUT];
     [request setVisual:visual];
     [request setValueMask:XCB_CW_BACK_PIXEL /*| XCB_CW_BACKING_STORE*/ | XCB_CW_EVENT_MASK];
@@ -1094,8 +1102,50 @@ static XCBConnection *sharedInstance;
         frame = (XCBFrame *) [window parentWindow];
         [window grabPointer];
 
-        XCBPoint destPoint = XCBMakePoint(anEvent->root_x, anEvent->root_y);
-        NSLog(@"DRAG: Moving window to root coords (%d, %d)", anEvent->root_x, anEvent->root_y);
+        // Get the destination point from mouse position
+        int16_t mouseX = anEvent->root_x;
+        int16_t mouseY = anEvent->root_y;
+        
+        // Calculate frame position (mouse position minus offset)
+        XCBPoint offset = [frame offset];
+        int16_t frameX = mouseX - offset.x;
+        int16_t frameY = mouseY - offset.y;
+        
+        // Use cached workarea for performance (no X server round-trip)
+        if (self.workareaValid) {
+            // Get frame dimensions to ensure entire window stays within workarea
+            XCBRect frameRect = [frame windowRect];
+            uint32_t frameWidth = frameRect.size.width;
+            uint32_t frameHeight = frameRect.size.height;
+            
+            // Constrain frame X position: don't allow window to go left of workarea left edge
+            if (frameX < _cachedWorkareaX) {
+                frameX = _cachedWorkareaX;
+            }
+            
+            // Constrain frame Y position: don't allow titlebar to go above workarea top
+            if (frameY < _cachedWorkareaY) {
+                frameY = _cachedWorkareaY;
+            }
+            
+            // Constrain right edge: don't allow window to extend beyond workarea right edge
+            int32_t maxFrameX = _cachedWorkareaX + (int32_t)_cachedWorkareaWidth - (int32_t)frameWidth;
+            if (frameX > maxFrameX) {
+                frameX = maxFrameX;
+            }
+            
+            // Constrain bottom edge: don't allow window to extend beyond workarea bottom edge
+            int32_t maxFrameY = _cachedWorkareaY + (int32_t)_cachedWorkareaHeight - (int32_t)frameHeight;
+            if (frameY > maxFrameY) {
+                frameY = maxFrameY;
+            }
+        }
+        
+        // Convert constrained frame position back to mouse coordinates for moveTo:
+        // (moveTo will subtract the offset again to get the final frame position)
+        int16_t destX = frameX + offset.x;
+        int16_t destY = frameY + offset.y;
+        XCBPoint destPoint = XCBMakePoint(destX, destY);
         [frame moveTo:destPoint];
         [frame configureClient];
 
@@ -1169,6 +1219,7 @@ static XCBConnection *sharedInstance;
             frame = (XCBFrame *) window;
 
         [frame resize:anEvent xcbConnection:connection];
+        needFlush = YES;
     }
 
     window = nil;
@@ -1235,9 +1286,22 @@ static XCBConnection *sharedInstance;
         TitleBarSettingsService *settingsService = [TitleBarSettingsService sharedInstance];
         uint16_t titleHgt = [settingsService heightDefined] ? [settingsService height] : [settingsService defaultHeight];
 
-        /*** frame **/
-        XCBSize size = XCBMakeSize([screen width], [screen height]);
-        XCBPoint position = XCBMakePoint(0.0,0.0);
+        // Read workarea from root window to respect struts (e.g., menu bar)
+        EWMHService *ewmhService = [EWMHService sharedInstanceWithConnection:self];
+        int32_t workareaX = 0, workareaY = 0;
+        uint32_t workareaWidth = [screen width], workareaHeight = [screen height];
+        
+        XCBWindow *rootWindow = [screen rootWindow];
+        if ([ewmhService readWorkareaForRootWindow:rootWindow x:&workareaX y:&workareaY width:&workareaWidth height:&workareaHeight]) {
+            NSLog(@"[Maximize] Using workarea: x=%d, y=%d, width=%u, height=%u", 
+                  workareaX, workareaY, workareaWidth, workareaHeight);
+        } else {
+            NSLog(@"[Maximize] No workarea set, using full screen: %u x %u", workareaWidth, workareaHeight);
+        }
+
+        /*** frame - maximize to workarea, not full screen **/
+        XCBSize size = XCBMakeSize(workareaWidth, workareaHeight);
+        XCBPoint position = XCBMakePoint(workareaX, workareaY);
         [frame maximizeToSize:size andPosition:position];
         [frame setFullScreen:YES];
 
@@ -1253,7 +1317,12 @@ static XCBConnection *sharedInstance;
         position = XCBMakePoint(0.0, titleHgt - 1);
         [clientWindow maximizeToSize:size andPosition:position];
         [clientWindow setFullScreen:YES];
+        
+        /*** Update resize handle position if it exists ***/
+        [frame updateResizeHandlePosition];
 
+        ewmhService = nil;
+        rootWindow = nil;
         screen = nil;
         window = nil;
         frame = nil;
@@ -1287,9 +1356,16 @@ static XCBConnection *sharedInstance;
     {
         frame = (XCBFrame *) [window parentWindow];
         clientWindow = [frame childWindowForKey:ClientWindow];
+        
+        // Check if this is the resize handle - if so, use client window for active window
+        XCBWindow *resizeHandle = [frame childWindowForKey:ResizeHandle];
+        BOOL isResizeHandle = (resizeHandle && [resizeHandle window] == [window window]);
+        
         EWMHService *ewmhService = [EWMHService sharedInstanceWithConnection:self];
-        [ewmhService updateNetActiveWindow:window];
+        // Use client window for active window, not the resize handle
+        [ewmhService updateNetActiveWindow:isResizeHandle ? clientWindow : window];
         ewmhService = nil;
+        resizeHandle = nil;
 
     }
 
@@ -1361,7 +1437,33 @@ static XCBConnection *sharedInstance;
           (int)relativeOffset.x, (int)relativeOffset.y, (int)frameRect.position.x, (int)frameRect.position.y);
 
     if ([frame window] != anEvent->root && [[frame childWindowForKey:ClientWindow] canMove])
+    {
         dragState = YES;
+        
+        // Cache workarea when drag starts for performance
+        XCBScreen *screen = [frame onScreen];
+        if (screen) {
+            EWMHService *ewmhService = [EWMHService sharedInstanceWithConnection:self];
+            XCBWindow *rootWindow = [screen rootWindow];
+            self.workareaValid = [ewmhService readWorkareaForRootWindow:rootWindow 
+                                                                      x:&_cachedWorkareaX 
+                                                                      y:&_cachedWorkareaY 
+                                                                  width:&_cachedWorkareaWidth 
+                                                                 height:&_cachedWorkareaHeight];
+            if (!self.workareaValid) {
+                // No workarea set, use full screen
+                _cachedWorkareaX = 0;
+                _cachedWorkareaY = 0;
+                _cachedWorkareaWidth = [screen width];
+                _cachedWorkareaHeight = [screen height];
+                self.workareaValid = YES;
+            }
+            ewmhService = nil;
+            rootWindow = nil;
+        } else {
+            self.workareaValid = NO;
+        }
+    }
     else
         dragState = NO;
 
@@ -1369,7 +1471,25 @@ static XCBConnection *sharedInstance;
     /*** RESIZE WINDOW BY CLICKING ON THE BORDER ***/
 
     if ([titleBar window] != anEvent->event && [[frame childWindowForKey:ClientWindow] canResize])
-        [self borderClickedForFrameWindow:frame withEvent:anEvent];
+    {
+        // Check if click is on the resize handle
+        XCBWindow *resizeHandle = [frame childWindowForKey:ResizeHandle];
+        if (resizeHandle && [resizeHandle window] == anEvent->event) {
+            // Clicked on the resize handle - start bottom-right corner resize
+            if (![frame grabPointer]) {
+                NSLog(@"Unable to grab the pointer for resize handle");
+            } else {
+                resizeState = YES;
+                dragState = NO;
+                [frame setBottomBorderClicked:YES];
+                [frame setRightBorderClicked:YES];
+                NSLog(@"Resize handle clicked - starting corner resize");
+            }
+        } else {
+            // Check border clicks
+            [self borderClickedForFrameWindow:frame withEvent:anEvent];
+        }
+    }
 
     frame = nil;
     window = nil;
@@ -1413,6 +1533,7 @@ static XCBConnection *sharedInstance;
 
     [window ungrabPointer];
     dragState = NO;
+    self.workareaValid = NO;  // Clear cached workarea
     resizeState = NO;
     window = nil;
     frame = nil;
@@ -1425,11 +1546,29 @@ static XCBConnection *sharedInstance;
 
 - (void)handleFocusIn:(xcb_focus_in_event_t *)anEvent
 {
-    // Don't call focus again here - it creates a feedback loop that causes high CPU usage
-    // The focus has already been set by the button press handler
-    // Just log for debugging if needed
-    // XCBWindow *window = [self windowForXCBId:anEvent->event];
-    // NSLog(@"FocusIn event for window: %u (mode=%d, detail=%d)", anEvent->event, anEvent->mode, anEvent->detail);
+    // Update _NET_ACTIVE_WINDOW when focus changes (e.g., from Alt-Tab)
+    // Only handle focus changes that aren't from pointer grabs to avoid feedback loops
+    if (anEvent->mode == XCB_NOTIFY_MODE_NORMAL || anEvent->mode == XCB_NOTIFY_MODE_WHILE_GRABBED) {
+        XCBWindow *window = [self windowForXCBId:anEvent->event];
+        if (window) {
+            // If this is a frame window, get the client window
+            if ([window isKindOfClass:[XCBFrame class]]) {
+                XCBFrame *frame = (XCBFrame *)window;
+                XCBWindow *clientWindow = [frame childWindowForKey:ClientWindow];
+                if (clientWindow) {
+                    EWMHService *ewmhService = [EWMHService sharedInstanceWithConnection:self];
+                    [ewmhService updateNetActiveWindow:clientWindow];
+                    ewmhService = nil;
+                }
+            } 
+            // If this is a client window directly, use it
+            else if ([window decorated]) {
+                EWMHService *ewmhService = [EWMHService sharedInstanceWithConnection:self];
+                [ewmhService updateNetActiveWindow:window];
+                ewmhService = nil;
+            }
+        }
+    }
 }
 
 - (void) handlePropertyNotify:(xcb_property_notify_event_t*)anEvent
@@ -1473,6 +1612,28 @@ static XCBConnection *sharedInstance;
                 [window stackBelow];
             }
             free(windowTypeReply);
+        }
+    }
+    
+    // Handle _NET_WORKAREA changes on root window to update cached workarea
+    XCBScreen *screen = [[self screens] objectAtIndex:0];
+    XCBWindow *rootWindow = [screen rootWindow];
+    if ([name isEqualToString:[ewmhService EWMHWorkarea]] && anEvent->window == [rootWindow window])
+    {
+        NSLog(@"PropertyNotify: _NET_WORKAREA changed on root window - updating cached workarea");
+        if (screen && rootWindow) {
+            self.workareaValid = [ewmhService readWorkareaForRootWindow:rootWindow 
+                                                                      x:&_cachedWorkareaX 
+                                                                      y:&_cachedWorkareaY 
+                                                                  width:&_cachedWorkareaWidth 
+                                                                 height:&_cachedWorkareaHeight];
+            if (!self.workareaValid) {
+                // Fallback to full screen if workarea read fails
+                _cachedWorkareaX = 0;
+                _cachedWorkareaY = 0;
+                _cachedWorkareaWidth = [screen width];
+                _cachedWorkareaHeight = [screen height];
+            }
         }
     }
 
@@ -1640,6 +1801,16 @@ static XCBConnection *sharedInstance;
         [[window parentWindow] isKindOfClass:[XCBFrame class]])
     {
         [window grabButton];
+        
+        // Check if this is the resize handle - change cursor to resize cursor
+        XCBFrame *frameWindow = (XCBFrame *)[window parentWindow];
+        XCBWindow *resizeHandle = [frameWindow childWindowForKey:ResizeHandle];
+        if (resizeHandle && [resizeHandle window] == anEvent->event) {
+            // Mouse entered the resize handle - show resize cursor
+            [frameWindow showResizeCursorForPosition:BottomRightCorner];
+        }
+        frameWindow = nil;
+        resizeHandle = nil;
     }
 
     if ([window isKindOfClass:[XCBFrame class]])
@@ -1683,11 +1854,23 @@ static XCBConnection *sharedInstance;
 
 - (void)handleLeaveNotify:(xcb_leave_notify_event_t *)anEvent
 {
-    /*XCBWindow *window = [self windowForXCBId:anEvent->event];
-    [window description];
-
-    window = nil;*/
-
+    XCBWindow *window = [self windowForXCBId:anEvent->event];
+    
+    if ([window isKindOfClass:[XCBWindow class]] &&
+        [[window parentWindow] isKindOfClass:[XCBFrame class]])
+    {
+        // Check if this is the resize handle - change cursor back to normal pointer
+        XCBFrame *frameWindow = (XCBFrame *)[window parentWindow];
+        XCBWindow *resizeHandle = [frameWindow childWindowForKey:ResizeHandle];
+        if (resizeHandle && [resizeHandle window] == anEvent->event) {
+            // Mouse left the resize handle - show normal pointer cursor
+            [frameWindow showLeftPointerCursor];
+        }
+        frameWindow = nil;
+        resizeHandle = nil;
+    }
+    
+    window = nil;
 }
 
 - (void)handleVisibilityEvent:(xcb_visibility_notify_event_t *)anEvent
