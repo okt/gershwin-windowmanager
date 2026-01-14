@@ -836,10 +836,12 @@
 
 - (void)stackAbove
 {
+    NSLog(@"[STACK] stackAbove called for window %u", window);
     uint32_t values[1] = {XCB_STACK_MODE_ABOVE};
     xcb_configure_window([connection connection], window, XCB_CONFIG_WINDOW_STACK_MODE, &values);
     isAbove = YES;
     isBelow = NO;
+    NSLog(@"[STACK] Window %u raised to top", window);
 }
 
 - (void)stackBelow
@@ -929,17 +931,22 @@
     ICCCMService *icccmService = [ICCCMService sharedInstanceWithConnection:connection];
     EWMHService *ewmhService = [EWMHService sharedInstanceWithConnection:connection];
 
+    NSLog(@"[FOCUS] XCBWindow::focus called for window %u", window);
+    
     // CRITICAL SAFETY: Ungrab keyboard once to prevent stuck keyboard focus
     xcb_ungrab_keyboard([connection connection], XCB_CURRENT_TIME);
+    NSLog(@"[FOCUS] Keyboard ungrabbed");
 
     // ALWAYS set input focus, regardless of hasInputHint
     // This ensures we can type in the window even if hints are incorrect
     [self setInputFocus:XCB_INPUT_FOCUS_PARENT time:[connection currentTime]];
+    NSLog(@"[FOCUS] Input focus set for window %u", window);
 
     /*** check for the WMTakeFocus protocol ***/
 
     if ([icccmService hasProtocol:[icccmService WMTakeFocus] forWindow:self])
     {
+        NSLog(@"[FOCUS] Window %u supports WM_TAKE_FOCUS, sending client message", window);
         event.type = [atomService atomFromCachedAtomsWithKey:[icccmService WMProtocols]];
         event.format = 32;
         event.response_type = XCB_CLIENT_MESSAGE;
@@ -951,8 +958,11 @@
         event.sequence = 0;
 
         [connection sendEvent:(const char*) &event toClient:self propagate:NO];
+    } else {
+        NSLog(@"[FOCUS] Window %u does not support WM_TAKE_FOCUS", window);
     }
 
+    NSLog(@"[FOCUS] Updating _NET_ACTIVE_WINDOW for window %u", window);
     [ewmhService updateNetActiveWindow:self];
 
     atomService = nil;

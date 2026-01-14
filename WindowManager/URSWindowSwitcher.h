@@ -52,8 +52,4 @@
 - (void)completeSwitching;
 - (void)cancelSwitching;
 
-// Helper methods
-- (void)focusWindow:(XCBFrame *)frame;
-- (void)raiseWindow:(XCBFrame *)frame;
-
 @end

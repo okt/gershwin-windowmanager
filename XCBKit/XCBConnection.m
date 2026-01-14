@@ -1396,10 +1396,13 @@ static XCBConnection *sharedInstance;
     // CRITICAL: ALWAYS set focus when clicking on a window
     // This ensures that no matter what, clicking allows typing in that window
     if (clientWindow && frame) {
+        NSLog(@"[ACTIVATE] Button press on frame %u - focusing client window %u", [frame window], [clientWindow window]);
         [clientWindow focus];
+        NSLog(@"[ACTIVATE] Client window focused, now raising frame");
         // Don't raise desktop windows - they should always stay at the bottom
         if (!isDesktopWindow) {
             [frame stackAbove];
+            NSLog(@"[ACTIVATE] Frame raised");
         }
     } else if (window && [window isKindOfClass:[XCBWindow class]]) {
         // Fallback: If we couldn't find client/frame but have a window, focus it directly

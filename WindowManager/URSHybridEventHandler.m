@@ -500,6 +500,10 @@
             // Check if this is a button click on a GSThemeTitleBar
             if (![self handleTitlebarButtonPress:pressEvent]) {
                 // Not a titlebar button, let xcbkit handle normally
+                // This follows the complete XCBKit activation path:
+                // 1. Focus the client window (WM_TAKE_FOCUS, _NET_ACTIVE_WINDOW, ungrab keyboard)
+                // 2. Raise the frame
+                // 3. Update titlebar states (active/inactive for all windows)
                 [connection handleButtonPress:pressEvent];
             }
             
@@ -2390,6 +2394,8 @@
                       (CGFloat)(screenWidth - maxLeft - maxRight),
                       (CGFloat)(screenHeight - maxTop - maxBottom));
 }
+
+#pragma mark - Cleanup
 
 - (void)dealloc
 {

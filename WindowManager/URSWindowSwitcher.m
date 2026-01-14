@@ -13,6 +13,7 @@
 #import <XCBKit/services/EWMHService.h>
 #import <xcb/xcb.h>
 #import <xcb/xcb_icccm.h>
+#import "URSThemeIntegration.h"
 
 #pragma mark - URSWindowEntry Implementation
 
@@ -552,21 +553,49 @@
 - (void)completeSwitching {
     if (!self.isSwitching) return;
     
-    NSLog(@"[WindowSwitcher] Completing window switch at index %ld", (long)self.currentIndex);
+    NSLog(@"[WindowSwitcher] ========== COMPLETING WINDOW SWITCH ==========");
+    NSLog(@"[WindowSwitcher] Current index: %ld", (long)self.currentIndex);
     
     // NOW perform the actual window switching when Alt is released
     if (self.currentIndex >= 0 && self.currentIndex < [self.windowEntries count]) {
         URSWindowEntry *entry = [self.windowEntries objectAtIndex:self.currentIndex];
-        NSLog(@"[WindowSwitcher] Switching focus to: %@", entry.title);
+        NSLog(@"[WindowSwitcher] Switching to: %@", entry.title);
         
         // If this window was minimized, unminimize it now
         if (entry.wasMinimized) {
+            NSLog(@"[WindowSwitcher] Window was minimized, unminimizing...");
             [self unminimizeWindow:entry.frame];
         }
         
-        // Raise and focus the selected window
-        [self raiseWindow:entry.frame];
-        [self focusWindow:entry.frame];
+        // CRITICAL: Use the EXACT same code path as handleButtonPress
+        // This ensures window activation works identically to clicking the titlebar
+        XCBWindow *clientWindow = [entry.frame childWindowForKey:ClientWindow];
+        XCBTitleBar *titleBar = (XCBTitleBar *)[entry.frame childWindowForKey:TitleBar];
+        
+        if (clientWindow && entry.frame) {
+            NSLog(@"[WindowSwitcher] Focusing client window %u and raising frame %u", 
+                  [clientWindow window], [entry.frame window]);
+            
+            // Step 1: Focus the client window (same as handleButtonPress)
+            [clientWindow focus];
+            
+            // Step 2: Raise the frame (same as handleButtonPress)
+            [entry.frame stackAbove];
+            
+            // Step 3: Update titlebar state and redraw all titlebars (same as handleButtonPress)
+            if (titleBar) {
+                [titleBar setIsAbove:YES];
+                [titleBar setButtonsAbove:YES];
+                [titleBar drawTitleBarComponents];
+                
+                // CRITICAL: This is what makes all OTHER windows appear inactive
+                [self.connection drawAllTitleBarsExcept:titleBar];
+            }
+            
+            NSLog(@"[WindowSwitcher] Window activation complete using XCBKit standard path");
+        } else {
+            NSLog(@"[WindowSwitcher] WARNING: Could not get client window or frame!");
+        }
     }
     
     // Re-minimize any other windows that were temporarily shown (none in current implementation)
@@ -586,6 +615,8 @@
     // Reset state
     self.isSwitching = NO;
     self.currentIndex = -1;
+    
+    NSLog(@"[WindowSwitcher] ========== WINDOW SWITCH COMPLETED ==========");
 }
 
 - (void)cancelSwitching {
@@ -607,49 +638,6 @@
     // Reset state
     self.isSwitching = NO;
     self.currentIndex = -1;
-}
-
-#pragma mark - Helper Methods
-
-- (void)raiseWindow:(XCBFrame *)frame {
-    if (!frame) return;
-    
-    @try {
-        xcb_connection_t *conn = [self.connection connection];
-        uint32_t values[] = { XCB_STACK_MODE_ABOVE };
-        xcb_configure_window(conn, [frame window], XCB_CONFIG_WINDOW_STACK_MODE, values);
-        [self.connection flush];
-    } @catch (NSException *exception) {
-        NSLog(@"[WindowSwitcher] Exception raising window: %@", exception.reason);
-    }
-}
-
-- (void)focusWindow:(XCBFrame *)frame {
-    if (!frame) return;
-    
-    @try {
-        xcb_connection_t *conn = [self.connection connection];
-        
-        // Focus the client window
-        XCBWindow *clientWindow = [frame childWindowForKey:ClientWindow];
-        if (clientWindow) {
-            xcb_set_input_focus(conn, XCB_INPUT_FOCUS_POINTER_ROOT,
-                               [clientWindow window], XCB_CURRENT_TIME);
-            
-            // Update _NET_ACTIVE_WINDOW so Menu and other apps can track active window changes
-            EWMHService *ewmhService = [EWMHService sharedInstanceWithConnection:self.connection];
-            [ewmhService updateNetActiveWindow:clientWindow];
-            ewmhService = nil;
-        } else {
-            xcb_set_input_focus(conn, XCB_INPUT_FOCUS_POINTER_ROOT,
-                               [frame window], XCB_CURRENT_TIME);
-        }
-        
-        [self.connection flush];
-        
-    } @catch (NSException *exception) {
-        NSLog(@"[WindowSwitcher] Exception focusing window: %@", exception.reason);
-    }
 }
 
 @end
