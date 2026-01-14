@@ -59,6 +59,9 @@
 // Handle damage events
 - (void)handleDamageNotify:(xcb_window_t)window;
 
+// Handle expose events - forces pixmap recreation for exposed windows
+- (void)handleExposeEvent:(xcb_window_t)window;
+
 // Extension event base access (for event routing)
 - (uint8_t)damageEventBase;
 

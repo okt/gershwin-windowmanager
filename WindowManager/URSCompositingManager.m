@@ -1153,9 +1153,9 @@
     if (!self.compositingActive) {
         return;
     }
-    
+
     URSCompositeWindow *cw = [self findCWindow:windowId];
-    
+
     // If the damaged window is not directly tracked, it might be a child window
     // (like a titlebar). Find its parent frame window.
     if (!cw) {
@@ -1164,12 +1164,54 @@
             cw = [self findCWindow:parentFrame];
         }
     }
-    
+
     if (!cw || !cw.damage) {
         return;
     }
-    
+
     [self repairWindow:cw];
+}
+
+- (void)handleExposeEvent:(xcb_window_t)windowId {
+    if (!self.compositingActive) {
+        return;
+    }
+
+    URSCompositeWindow *cw = [self findCWindow:windowId];
+
+    // If the exposed window is not directly tracked, it might be a child window
+    // (like a titlebar or client). Find its parent frame window.
+    if (!cw) {
+        xcb_window_t parentFrame = [self findParentFrameWindow:windowId];
+        if (parentFrame != XCB_NONE) {
+            cw = [self findCWindow:parentFrame];
+        }
+    }
+
+    if (!cw) {
+        return;
+    }
+
+    // BUGFIX: When a window is exposed (becomes visible after being obscured),
+    // the NameWindowPixmap may be stale because fixed-size windows don't redraw
+    // themselves - they expect the X server to preserve their contents.
+    // With compositing, we must force recreation of the pixmap to get fresh content.
+    xcb_connection_t *conn = [self.connection connection];
+
+    if (cw.nameWindowPixmap != XCB_NONE) {
+        xcb_free_pixmap(conn, cw.nameWindowPixmap);
+        cw.nameWindowPixmap = XCB_NONE;
+    }
+    if (cw.picture != XCB_NONE) {
+        xcb_render_free_picture(conn, cw.picture);
+        cw.picture = XCB_NONE;
+    }
+    cw.pictureValid = NO;
+    cw.needsPictureCreation = YES;
+
+    // Damage the exposed area to trigger repaint
+    [self damageWindowArea:cw];
+    [self scheduleRepair];
 }
 
 // Find the parent window that we're tracking (frame window)

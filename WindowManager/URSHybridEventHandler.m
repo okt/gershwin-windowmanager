@@ -449,9 +449,14 @@
 
             // Re-apply GSTheme if this is a titlebar expose event
             [self handleTitlebarExpose:exposeEvent];
-            
+
             // Trigger compositor update for the exposed window
             if (self.compositingManager && [self.compositingManager compositingActive]) {
+                // BUGFIX: Handle expose event to force NameWindowPixmap recreation.
+                // This fixes corruption with fixed-size windows (like About dialogs)
+                // that don't redraw themselves when exposed after being obscured.
+                [self.compositingManager handleExposeEvent:exposeEvent->window];
+
                 // Update the specific window that was exposed for efficient redraw
                 [self.compositingManager updateWindow:exposeEvent->window];
                 // Force immediate repair for expose events (e.g., cursor blinking)
