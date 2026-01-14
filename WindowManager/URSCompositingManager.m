@@ -1030,6 +1030,11 @@
     cw.pictureValid = NO;
     cw.needsPictureCreation = YES;
 
+    // BUGFIX: Flush immediately to ensure X server processes the pixmap/picture
+    // invalidation before we attempt to create new ones. This prevents race
+    // conditions where we read stale content from a partially-freed pixmap.
+    [self.connection flush];
+
     // Mark stacking order dirty (window moved)
     self.stackingOrderDirty = YES;
 }
@@ -1488,7 +1493,12 @@
     }
     
     xcb_xfixes_destroy_region(conn, paint_region);
-    
+
+    // BUGFIX: Flush all window painting commands before copying to screen.
+    // This ensures all render operations on rootBuffer are complete before
+    // we read from it, preventing partially-rendered content from appearing.
+    xcb_flush(conn);
+
     // Copy ONLY damaged region to screen (performance optimization)
     xcb_xfixes_set_picture_clip_region(conn, self.rootPicture, region, 0, 0);
     xcb_render_composite(conn,
@@ -1500,7 +1510,7 @@
                         0, 0,
                         0, 0,
                         self.screenWidth, self.screenHeight);
-    
+
     [self.connection flush];
     
     // NSLog(@"[CompositingManager] paintAll: painted %lu windows", (unsigned long)num_windows);
@@ -1852,10 +1862,15 @@ static uint8_t sum_gaussian(double *map, int map_size, double opacity,
 - (xcb_render_picture_t)getWindowPicture:(URSCompositeWindow *)cw {
     xcb_connection_t *conn = [self.connection connection];
     xcb_drawable_t draw = cw.windowId;
-    
+
     // Use NameWindowPixmap (the redirected offscreen storage) for proper content capture
     // Try to get the name_window_pixmap first
     if (cw.nameWindowPixmap == XCB_NONE) {
+        // BUGFIX: Flush before creating NameWindowPixmap to ensure X server has
+        // finished any pending drawing operations on the window. This prevents
+        // capturing stale or partially-drawn content that causes ghost artifacts.
+        xcb_flush(conn);
+
         cw.nameWindowPixmap = xcb_generate_id(conn);
         xcb_void_cookie_t cookie = xcb_composite_name_window_pixmap_checked(conn, cw.windowId, cw.nameWindowPixmap);
         xcb_generic_error_t *error = xcb_request_check(conn, cookie);
