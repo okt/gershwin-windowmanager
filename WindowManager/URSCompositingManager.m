@@ -1014,7 +1014,22 @@
         xcb_xfixes_destroy_region(conn, cw.extents);
         cw.extents = XCB_NONE;
     }
-    
+
+    // BUGFIX: Invalidate NameWindowPixmap on move to prevent ghost artifacts
+    // The NameWindowPixmap is tied to the window's old position in the X server's
+    // offscreen storage. When the window moves, we need a fresh pixmap reference
+    // to ensure the compositor paints from the correct location.
+    if (cw.nameWindowPixmap != XCB_NONE) {
+        xcb_free_pixmap(conn, cw.nameWindowPixmap);
+        cw.nameWindowPixmap = XCB_NONE;
+    }
+    if (cw.picture != XCB_NONE) {
+        xcb_render_free_picture(conn, cw.picture);
+        cw.picture = XCB_NONE;
+    }
+    cw.pictureValid = NO;
+    cw.needsPictureCreation = YES;
+
     // Mark stacking order dirty (window moved)
     self.stackingOrderDirty = YES;
 }
@@ -1336,38 +1351,47 @@
     if (!self.compositingActive) {
         return;
     }
-    
-    // PERFORMANCE FIX: Throttle compositor updates during drag to reduce overhead
-    // Only update every 2nd frame during drag operations for smoother dragging
+
+    // PERFORMANCE FIX: Time-based throttling during drag (target ~60fps = 16.67ms)
+    // Unlike frame-skipping, this ensures we always paint when enough time has passed,
+    // preventing ghost artifacts while still maintaining good performance.
     if ([self.connection dragState]) {
-        self.repairFrameCounter++;
-        if (self.repairFrameCounter % 2 != 0) {
-            // Skip this frame, but keep damage accumulated
+        NSTimeInterval now = [NSDate timeIntervalSinceReferenceDate];
+        NSTimeInterval elapsed = now - self.lastRepairTime;
+
+        // Throttle to ~60fps during drag (allow paint if >= 16ms since last paint)
+        // This prevents ghost artifacts that occurred with frame-skipping
+        if (elapsed < 0.016 && self.lastRepairTime > 0) {
+            // Too soon - schedule a deferred repair to ensure we don't miss this damage
+            if (!self.repairScheduled) {
+                self.repairScheduled = YES;
+                [self performSelector:@selector(performRepair)
+                           withObject:nil
+                           afterDelay:0.016 - elapsed];
+            }
             return;
         }
-    } else {
-        // Reset counter when not dragging
-        self.repairFrameCounter = 0;
+        self.lastRepairTime = now;
     }
-    
+
     // Cancel any scheduled repair
     if (self.repairScheduled) {
-        [NSObject cancelPreviousPerformRequestsWithTarget:self 
-                                                 selector:@selector(performRepair) 
+        [NSObject cancelPreviousPerformRequestsWithTarget:self
+                                                 selector:@selector(performRepair)
                                                    object:nil];
         self.repairScheduled = NO;
     }
-    
+
     // Check if there's damage to paint
     if (self.allDamage == XCB_NONE) {
         return;
     }
-    
+
     xcb_xfixes_region_t damage = self.allDamage;
     self.allDamage = XCB_NONE;
-    
+
     [self paintAll:damage];
-    
+
     xcb_xfixes_destroy_region([self.connection connection], damage);
 }
 
