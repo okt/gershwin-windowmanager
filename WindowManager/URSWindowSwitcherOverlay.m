@@ -16,12 +16,13 @@
 //
 
 #import "URSWindowSwitcherOverlay.h"
+#import "URSCompositingManager.h"
 #import <X11/Xlib.h>
 #import <X11/Xutil.h>
 #import <X11/extensions/Xcomposite.h>
 
 // Constants for the switcher appearance
-static const CGFloat kIconSize = 64.0;
+static const CGFloat kIconSize = 48.0;
 static const CGFloat kIconSpacing = 20.0;
 static const CGFloat kPadding = 24.0;
 static const CGFloat kCornerRadius = 22.0;
@@ -32,7 +33,9 @@ static const CGFloat kSelectionPadding = 6.0;
 
 @interface URSWindowSwitcherOverlayView : NSView
 @property (strong, nonatomic) NSArray *titles;
+@property (strong, nonatomic) NSArray *icons;  // Array of NSImage objects (or NSNull for missing icons)
 @property (assign, nonatomic) NSInteger selectedIndex;
+@property (assign, nonatomic) BOOL useRoundedCorners;  // Whether to use rounded corners
 @end
 
 @implementation URSWindowSwitcherOverlayView
@@ -52,10 +55,16 @@ static const CGFloat kSelectionPadding = 6.0;
     
     NSInteger count = [self.titles count];
     
-    // Draw the rounded rectangle background with translucency
-    NSBezierPath *backgroundPath = [NSBezierPath bezierPathWithRoundedRect:self.bounds
-                                                                   xRadius:kCornerRadius
-                                                                   yRadius:kCornerRadius];
+    // Draw the rounded or square rectangle background with translucency
+    NSBezierPath *backgroundPath;
+    if (self.useRoundedCorners) {
+        backgroundPath = [NSBezierPath bezierPathWithRoundedRect:self.bounds
+                                                         xRadius:kCornerRadius
+                                                         yRadius:kCornerRadius];
+    } else {
+        // Square corners when compositing is disabled
+        backgroundPath = [NSBezierPath bezierPathWithRect:self.bounds];
+    }
     
     // Light grey background
     [[NSColor colorWithCalibratedWhite:0.75 alpha:0.95] set];
@@ -76,7 +85,7 @@ static const CGFloat kSelectionPadding = 6.0;
         CGFloat x = startX + i * (kIconSize + kIconSpacing);
         NSRect iconRect = NSMakeRect(x, iconY, kIconSize, kIconSize);
         
-        // Draw selection highlight for the current item
+        // Draw selection highlight for the current item - always use rounded corners
         if (i == self.selectedIndex) {
             NSRect selectionRect = NSInsetRect(iconRect, -kSelectionPadding, -kSelectionPadding);
             NSBezierPath *selectionPath = [NSBezierPath bezierPathWithRoundedRect:selectionRect
@@ -91,36 +100,53 @@ static const CGFloat kSelectionPadding = 6.0;
             [selectionPath stroke];
         }
         
-        // Draw a placeholder icon (rounded rect with app initial)
-        NSBezierPath *iconPath = [NSBezierPath bezierPathWithRoundedRect:iconRect
-                                                                 xRadius:12.0
-                                                                 yRadius:12.0];
-        
-        // Generate a color based on the title
-        NSString *title = [self.titles objectAtIndex:i];
-        CGFloat hue = (CGFloat)(([title hash] % 100) / 100.0);
-        NSColor *iconColor = [NSColor colorWithCalibratedHue:hue
-                                                  saturation:0.6
-                                                  brightness:0.7
-                                                       alpha:1.0];
-        [iconColor set];
-        [iconPath fill];
-        
-        // Draw app initial in the icon
-        NSString *initial = @"?";
-        if (title && [title length] > 0) {
-            initial = [[title substringToIndex:1] uppercaseString];
+        // Try to get the actual app icon
+        NSImage *appIcon = nil;
+        if (self.icons && i < [self.icons count]) {
+            id iconObject = [self.icons objectAtIndex:i];
+            if ([iconObject isKindOfClass:[NSImage class]]) {
+                appIcon = (NSImage *)iconObject;
+            }
         }
         
-        NSDictionary *initialAttrs = @{
-            NSFontAttributeName: [NSFont boldSystemFontOfSize:32],
-            NSForegroundColorAttributeName: [NSColor colorWithCalibratedWhite:0.15 alpha:1.0]
-        };
-        
-        NSSize initialSize = [initial sizeWithAttributes:initialAttrs];
-        NSPoint initialPoint = NSMakePoint(x + (kIconSize - initialSize.width) / 2,
-                                           iconY + (kIconSize - initialSize.height) / 2);
-        [initial drawAtPoint:initialPoint withAttributes:initialAttrs];
+        if (appIcon) {
+            // Draw the actual application icon
+            [appIcon drawInRect:iconRect
+                       fromRect:NSZeroRect
+                      operation:NSCompositeSourceOver
+                       fraction:1.0];
+        } else {
+            // Fallback: Draw a placeholder icon with app initial (as before)
+            NSBezierPath *iconPath = [NSBezierPath bezierPathWithRoundedRect:iconRect
+                                                                     xRadius:12.0
+                                                                     yRadius:12.0];
+            
+            // Generate a color based on the title
+            NSString *title = [self.titles objectAtIndex:i];
+            CGFloat hue = (CGFloat)(([title hash] % 100) / 100.0);
+            NSColor *iconColor = [NSColor colorWithCalibratedHue:hue
+                                                      saturation:0.6
+                                                      brightness:0.7
+                                                           alpha:1.0];
+            [iconColor set];
+            [iconPath fill];
+            
+            // Draw app initial in the icon
+            NSString *initial = @"?";
+            if (title && [title length] > 0) {
+                initial = [[title substringToIndex:1] uppercaseString];
+            }
+            
+            NSDictionary *initialAttrs = @{
+                NSFontAttributeName: [NSFont boldSystemFontOfSize:32],
+                NSForegroundColorAttributeName: [NSColor colorWithCalibratedWhite:0.15 alpha:1.0]
+            };
+            
+            NSSize initialSize = [initial sizeWithAttributes:initialAttrs];
+            NSPoint initialPoint = NSMakePoint(x + (kIconSize - initialSize.width) / 2,
+                                               iconY + (kIconSize - initialSize.height) / 2);
+            [initial drawAtPoint:initialPoint withAttributes:initialAttrs];
+        }
     }
     
     // Draw the selected app name centered at the bottom
@@ -311,7 +337,7 @@ static const CGFloat kSelectionPadding = 6.0;
     NSLog(@"[WindowSwitcherOverlay] Hidden immediately");
 }
 
-- (void)updateWithTitles:(NSArray *)titles currentIndex:(NSInteger)index {
+- (void)updateWithTitles:(NSArray *)titles icons:(NSArray *)icons currentIndex:(NSInteger)index {
     if (!titles || [titles count] == 0) {
         [self hide];
         return;
@@ -348,11 +374,18 @@ static const CGFloat kSelectionPadding = 6.0;
     URSWindowSwitcherOverlayView *view = (URSWindowSwitcherOverlayView *)[self contentView];
     [view setFrame:NSMakeRect(0, 0, windowWidth, windowHeight)];
     view.titles = titles;
+    view.icons = icons;  // May be nil for fallback to letter icons
     view.selectedIndex = index;
+    
+    // Check if compositing is active to determine whether to use rounded corners
+    // Import the compositing manager header at the top if needed
+    URSCompositingManager *compositor = [URSCompositingManager sharedManager];
+    view.useRoundedCorners = [compositor compositingActive];
+    
     [view setNeedsDisplay:YES];
     
-    NSLog(@"[WindowSwitcherOverlay] Updated with %lu titles, selected: %ld",
-          (unsigned long)count, (long)index);
+    NSLog(@"[WindowSwitcherOverlay] Updated with %lu titles, selected: %ld, rounded corners: %d",
+          (unsigned long)count, (long)index, view.useRoundedCorners);
 }
 
 @end

@@ -11,8 +11,10 @@
 #import <XCBKit/XCBScreen.h>
 #import <XCBKit/services/ICCCMService.h>
 #import <XCBKit/services/EWMHService.h>
+#import <XCBKit/utils/CairoSurfacesSet.h>
 #import <xcb/xcb.h>
 #import <xcb/xcb_icccm.h>
+#import <cairo/cairo.h>
 #import "URSThemeIntegration.h"
 
 #pragma mark - URSWindowEntry Implementation
@@ -92,6 +94,8 @@
                         URSWindowEntry *entry = [[URSWindowEntry alloc] initWithFrame:frame
                                                                          wasMinimized:isMinimized
                                                                                 title:title];
+                        // Fetch the app icon
+                        entry.icon = [self getIconForFrame:frame];
                         [validEntries addObject:entry];
                     }
                 }
@@ -454,6 +458,209 @@
     }
 }
 
+- (NSImage *)convertCairoSurfaceToNSImage:(cairo_surface_t *)surface {
+    if (!surface) return nil;
+    
+    int width = cairo_image_surface_get_width(surface);
+    int height = cairo_image_surface_get_height(surface);
+    int stride = cairo_image_surface_get_stride(surface);
+    unsigned char *data = cairo_image_surface_get_data(surface);
+    
+    if (!data || width <= 0 || height <= 0) return nil;
+    
+    // Create bitmap image rep from cairo surface data (BGRA format)
+    NSBitmapImageRep *bitmap = [[NSBitmapImageRep alloc]
+        initWithBitmapDataPlanes:NULL
+        pixelsWide:width
+        pixelsHigh:height
+        bitsPerSample:8
+        samplesPerPixel:4
+        hasAlpha:YES
+        isPlanar:NO
+        colorSpaceName:NSDeviceRGBColorSpace
+        bytesPerRow:width * 4
+        bitsPerPixel:32];
+    
+    if (!bitmap) return nil;
+    
+    unsigned char *bitmapData = [bitmap bitmapData];
+    
+    // Convert from Cairo BGRA to NSBitmapImageRep RGBA
+    for (int y = 0; y < height; y++) {
+        uint32_t *srcRow = (uint32_t *)(data + (y * stride));
+        uint32_t *dstRow = (uint32_t *)(bitmapData + (y * width * 4));
+        
+        for (int x = 0; x < width; x++) {
+            uint32_t pixel = srcRow[x];
+            // Cairo BGRA (little-endian: A R G B) -> RGBA (little-endian: A B G R)
+            uint32_t b = (pixel >> 0) & 0xFF;
+            uint32_t g = (pixel >> 8) & 0xFF;
+            uint32_t r = (pixel >> 16) & 0xFF;
+            uint32_t a = (pixel >> 24) & 0xFF;
+            dstRow[x] = (a << 24) | (b << 16) | (g << 8) | r;
+        }
+    }
+    
+    NSImage *image = [[NSImage alloc] initWithSize:NSMakeSize(width, height)];
+    [image addRepresentation:bitmap];
+    
+    return image;
+}
+
+- (NSImage *)getIconForFrame:(XCBFrame *)frame {
+    if (!frame) return nil;
+    
+    @try {
+        XCBWindow *clientWindow = [frame childWindowForKey:ClientWindow];
+        if (!clientWindow) return nil;
+        
+        // Get WM_CLASS to identify the application
+        // First ensure wmClass is fetched (it may already be cached)
+        ICCCMService *icccmService = [ICCCMService sharedInstanceWithConnection:self.connection];
+        [icccmService wmClassForWindow:clientWindow];
+        
+        NSMutableArray *windowClass = [clientWindow windowClass];
+        NSString *className = nil;
+        NSString *instanceName = nil;
+        
+        if (windowClass && [windowClass count] >= 2) {
+            className = [windowClass objectAtIndex:0];
+            instanceName = [windowClass objectAtIndex:1];
+        }
+        
+        NSWorkspace *workspace = [NSWorkspace sharedWorkspace];
+        NSString *appPath = nil;
+        
+        // Try to find the application path if we have WM_CLASS
+        if (className && [className length] > 0) {
+            // First try the class name
+            appPath = [workspace fullPathForApplication:className];
+            
+            // If that fails, try the instance name
+            if (!appPath || [appPath length] == 0) {
+                if (instanceName && [instanceName length] > 0) {
+                    appPath = [workspace fullPathForApplication:instanceName];
+                }
+            }
+            
+            // For non-GNUstep apps, try common paths
+            if (!appPath || [appPath length] == 0) {
+                NSArray *searchPaths = @[
+                    @"/usr/share/applications",
+                    @"/usr/local/share/applications",
+                    @"/System/Applications"
+                ];
+                
+                for (NSString *searchPath in searchPaths) {
+                    // Try .desktop file approach for non-GNUstep apps
+                    NSString *desktopPath = [NSString stringWithFormat:@"%@/%@.desktop", searchPath, [className lowercaseString]];
+                    if ([[NSFileManager defaultManager] fileExistsAtPath:desktopPath]) {
+                        // Read Icon= line from .desktop file
+                        NSString *desktopContent = [NSString stringWithContentsOfFile:desktopPath encoding:NSUTF8StringEncoding error:nil];
+                        if (desktopContent) {
+                            NSArray *lines = [desktopContent componentsSeparatedByString:@"\n"];
+                            for (NSString *line in lines) {
+                                if ([line hasPrefix:@"Icon="]) {
+                                    NSString *iconName = [[line substringFromIndex:5] stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+                                    // Try as absolute path first
+                                    if ([iconName hasPrefix:@"/"]) {
+                                        if ([[NSFileManager defaultManager] fileExistsAtPath:iconName]) {
+                                            appPath = iconName;
+                                            break;
+                                        }
+                                    } else {
+                                        // Search in icon theme paths
+                                        NSArray *iconPaths = @[
+                                            [NSString stringWithFormat:@"/usr/share/pixmaps/%@.png", iconName],
+                                            [NSString stringWithFormat:@"/usr/share/icons/hicolor/48x48/apps/%@.png", iconName],
+                                            [NSString stringWithFormat:@"/usr/share/icons/hicolor/scalable/apps/%@.svg", iconName]
+                                        ];
+                                        for (NSString *iconPath in iconPaths) {
+                                            if ([[NSFileManager defaultManager] fileExistsAtPath:iconPath]) {
+                                                appPath = iconPath;
+                                                break;
+                                            }
+                                        }
+                                        if (appPath) break;
+                                    }
+                                }
+                            }
+                        }
+                        if (appPath) break;
+                    }
+                }
+            }
+            
+            if (appPath && [appPath length] > 0) {
+                // Get the application icon - use iconForFile which works for both .app bundles and icon files
+                NSImage *icon = [workspace iconForFile:appPath];
+                if (icon) {
+                    // Resize icon to 48x48 like the Dock uses
+                    [icon setSize:NSMakeSize(48.0, 48.0)];
+                    return icon;
+                }
+            }
+        }
+        
+        // FALLBACK 1: Try to get icon from X11 _NET_WM_ICON property
+        EWMHService *ewmhService = [EWMHService sharedInstanceWithConnection:self.connection];
+        xcb_get_property_reply_t *reply = [ewmhService netWmIconFromWindow:clientWindow];
+        
+        if (reply) {
+            CairoSurfacesSet *cairoSet = [[CairoSurfacesSet alloc] initWithConnection:self.connection];
+            [cairoSet buildSetFromReply:reply];
+            NSArray *surfaces = [cairoSet cairoSurfaces];
+            
+            if (surfaces && [surfaces count] > 0) {
+                // Find the best icon size (closest to 48x48)
+                cairo_surface_t *bestSurface = NULL;
+                int bestDiff = INT_MAX;
+                
+                for (NSValue *surfaceValue in surfaces) {
+                    cairo_surface_t *surface = [surfaceValue pointerValue];
+                    int width = cairo_image_surface_get_width(surface);
+                    int height = cairo_image_surface_get_height(surface);
+                    int diff = abs(width - 48) + abs(height - 48);
+                    
+                    if (diff < bestDiff) {
+                        bestDiff = diff;
+                        bestSurface = surface;
+                    }
+                }
+                
+                if (bestSurface) {
+                    NSImage *icon = [self convertCairoSurfaceToNSImage:bestSurface];
+                    if (icon) {
+                        // Resize to 48x48
+                        [icon setSize:NSMakeSize(48.0, 48.0)];
+                        free(reply);
+                        return icon;
+                    }
+                }
+            }
+            
+            free(reply);
+        }
+        
+        // FALLBACK 2: Use generic application icon
+        // Try to get the generic application icon from the workspace
+        NSString *genericAppPath = [workspace fullPathForApplication:@"GNUstep"];
+        if (genericAppPath) {
+            NSImage *genericAppIcon = [workspace iconForFile:genericAppPath];
+            if (genericAppIcon) {
+                [genericAppIcon setSize:NSMakeSize(48.0, 48.0)];
+                return genericAppIcon;
+            }
+        }
+        
+        return nil;
+        
+    } @catch (NSException *exception) {
+        NSLog(@"[WindowSwitcher] Exception getting icon for frame: %@", exception.reason);
+        return nil;
+    }
+}
+
 #pragma mark - Switching Operations
 
 - (void)startSwitching {
@@ -480,17 +687,24 @@
     self.currentIndex = 0;
     self.isSwitching = YES;
     
-    // Build title array for overlay showing ALL windows (current first, then others)
+    // Build title and icon arrays for overlay showing ALL windows (current first, then others)
     // The overlay shows: [Current, Next, Third, ...]
     NSMutableArray *titles = [NSMutableArray array];
+    NSMutableArray *icons = [NSMutableArray array];
     for (URSWindowEntry *entry in self.windowEntries) {
         [titles addObject:entry.title];
+        // Add icon or NSNull placeholder if no icon available
+        if (entry.icon) {
+            [icons addObject:entry.icon];
+        } else {
+            [icons addObject:[NSNull null]];
+        }
     }
     
     // Show overlay centered on screen
     [self.overlay showCenteredOnScreen];
     // Start with index 1 highlighted (the next window to switch to)
-    [self.overlay updateWithTitles:titles currentIndex:1];
+    [self.overlay updateWithTitles:titles icons:icons currentIndex:1];
     
     // Immediately cycle to next window (will move to index 1, which is already shown)
     [self cycleForward];
@@ -540,14 +754,21 @@
     // This ensures the user can cycle through options before committing to a switch
     
     // Update overlay display with new selection
-    // Build full titles array showing all windows
+    // Build full titles and icons arrays showing all windows
     NSMutableArray *titles = [NSMutableArray array];
+    NSMutableArray *icons = [NSMutableArray array];
     for (URSWindowEntry *e in self.windowEntries) {
         [titles addObject:e.title];
+        // Add icon or NSNull placeholder if no icon available
+        if (e.icon) {
+            [icons addObject:e.icon];
+        } else {
+            [icons addObject:[NSNull null]];
+        }
     }
     
     // Overlay index matches internal index (current window at 0, next at 1, etc.)
-    [self.overlay updateWithTitles:titles currentIndex:self.currentIndex];
+    [self.overlay updateWithTitles:titles icons:icons currentIndex:self.currentIndex];
 }
 
 - (void)completeSwitching {

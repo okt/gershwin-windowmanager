@@ -18,7 +18,8 @@
 - (void)showCenteredOnScreen;
 - (void)hide;
 
-// Update display with current titles and selection
-- (void)updateWithTitles:(NSArray *)titles currentIndex:(NSInteger)index;
+// Update display with current titles, icons, and selection
+// Pass nil for icons array to use fallback letter-based icons
+- (void)updateWithTitles:(NSArray *)titles icons:(NSArray *)icons currentIndex:(NSInteger)index;
 
 @end

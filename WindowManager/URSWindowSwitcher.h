@@ -12,6 +12,7 @@
 #import <XCBKit/XCBConnection.h>
 #import <XCBKit/XCBWindow.h>
 #import <XCBKit/XCBFrame.h>
+#import <cairo/cairo.h>
 #import "URSWindowSwitcherOverlay.h"
 
 // Window entry to track original minimized state
@@ -44,6 +45,8 @@
 - (void)minimizeWindow:(XCBFrame *)frame;
 - (void)unminimizeWindow:(XCBFrame *)frame;
 - (NSString *)getTitleForFrame:(XCBFrame *)frame;
+- (NSImage *)getIconForFrame:(XCBFrame *)frame;
+- (NSImage *)convertCairoSurfaceToNSImage:(cairo_surface_t *)surface;
 
 // Switching operations
 - (void)startSwitching;

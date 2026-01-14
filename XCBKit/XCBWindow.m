@@ -299,25 +299,80 @@
     dPixmap = xcb_generate_id([connection connection]);
     //sleep(1);
 
-    xcb_visualid_t visualId = [[self attributes] visualId];
+    // Ensure we have a screen reference (required by xcb_aux helpers)
+    if (screen == nil) {
+        screen = [self onScreen];
+    }
 
-    XCBVisual* visual = [[XCBVisual alloc]
+    // Fall back to parent window's screen if still unknown
+    if (screen == nil && parentWindow != nil) {
+        screen = [parentWindow onScreen];
+    }
+
+    // Final fallback: use the first screen from the connection if available
+    if (screen == nil) {
+        NSArray *scrs = [connection screens];
+        if ([scrs count] > 0) {
+            screen = [scrs objectAtIndex:0];
+        }
+    }
+
+    if (screen == nil) {
+        NSLog(@"[XCBWindow:createPixmap] Unable to determine screen for window %u - aborting pixmap creation", window);
+        return;
+    }
+
+    xcb_visualid_t visualId = [[self attributes] visualId];
+    // If visualId is 0, fall back to the screen's root visual
+    if ((visualId == 0 || visualId == XCB_NONE) && screen != nil) {
+        visualId = [screen screen]->root_visual;
+    }
+
+    XCBVisual* visual = nil;
+    if (screen != nil) {
+        visual = [[XCBVisual alloc]
                          initWithVisualId:visualId
                            withVisualType:xcb_aux_find_visual_by_id([screen screen], visualId)];
+    } else {
+        // Fallback: create a visual with the id (may be 0) but avoid calling xcb_aux helpers with NULL
+        visual = [[XCBVisual alloc]
+                         initWithVisualId:visualId
+                           withVisualType:NULL];
+    }
 
     uint32_t mask = XCB_GC_FOREGROUND | XCB_GC_BACKGROUND | XCB_GC_GRAPHICS_EXPOSURES;
     uint32_t values[] = {[screen screen]->white_pixel, [screen screen]->white_pixel, 0};
     [self createGraphicContextWithMask:mask andValues:values];
 
+    /* Use the screen root depth to avoid calling into xcb_aux helpers which can
+       crash if the screen structures aren't fully initialised yet for this window. */
+    uint8_t depth = 0;
+    if ([screen screen] != NULL) {
+        depth = [screen screen]->root_depth;
+    } else {
+        // Last resort: try the first screen from the connection
+        NSArray *scrs = [connection screens];
+        if ([scrs count] > 0) {
+            XCBScreen *first = [scrs objectAtIndex:0];
+            if ([first screen] != NULL)
+                depth = [first screen]->root_depth;
+        }
+    }
+
+    if (depth == 0) {
+        NSLog(@"[XCBWindow:createPixmap] Unable to determine root depth for window %u - aborting pixmap creation", window);
+        return;
+    }
+
     xcb_create_pixmap([connection connection],
-                      xcb_aux_get_depth_of_visual([screen screen], [visual visualId]),
+                      depth,
                       pixmap,
                       window,
                       windowRect.size.width,
                       windowRect.size.height);
 
     xcb_create_pixmap([connection connection],
-                      xcb_aux_get_depth_of_visual([screen screen], [visual visualId]),
+                      depth,
                       dPixmap,
                       window,
                       windowRect.size.width,
