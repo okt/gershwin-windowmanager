@@ -261,24 +261,17 @@
     int16_t handleX = frameRect.size.width - handleSize;
     int16_t handleY = frameRect.size.height - handleSize;
 
-    uint32_t mask = XCB_CW_BACK_PIXEL | XCB_CW_EVENT_MASK | XCB_CW_CURSOR;
-    uint32_t values[3];
-
-    // Blue color for the resize handle (debug/placeholder - theme will override)
-    xcb_alloc_color_cookie_t color_cookie = xcb_alloc_color([connection connection],
-                                                             [scr screen]->default_colormap,
-                                                             0, 0, 65535); // Blue: RGB(0,0,255)
-    xcb_alloc_color_reply_t *color_reply = xcb_alloc_color_reply([connection connection], color_cookie, NULL);
-    uint32_t bg_pixel = color_reply ? color_reply->pixel : [scr screen]->white_pixel;
-    free(color_reply);
+    // InputOnly window - invisible, just captures mouse events
+    // Theme renders the grow box visual in the scroll view corner
+    uint32_t mask = XCB_CW_EVENT_MASK | XCB_CW_CURSOR;
+    uint32_t values[2];
 
     // Get diagonal resize cursor (bottom-right)
     xcb_cursor_t resizeCursor = [[self cursor] selectResizeCursorForPosition:BottomRightCorner];
 
-    values[0] = bg_pixel;
-    values[1] = XCB_EVENT_MASK_BUTTON_PRESS | XCB_EVENT_MASK_BUTTON_RELEASE |
+    values[0] = XCB_EVENT_MASK_BUTTON_PRESS | XCB_EVENT_MASK_BUTTON_RELEASE |
                 XCB_EVENT_MASK_POINTER_MOTION | XCB_EVENT_MASK_ENTER_WINDOW | XCB_EVENT_MASK_LEAVE_WINDOW;
-    values[2] = resizeCursor;
+    values[1] = resizeCursor;
 
     xcb_create_window([connection connection],
                       XCB_COPY_FROM_PARENT,
@@ -287,8 +280,8 @@
                       handleX, handleY,
                       handleSize, handleSize,
                       0, // no border
-                      XCB_WINDOW_CLASS_INPUT_OUTPUT,
-                      [scr screen]->root_visual,
+                      XCB_WINDOW_CLASS_INPUT_ONLY,
+                      XCB_COPY_FROM_PARENT,
                       mask,
                       values);
 
@@ -301,7 +294,7 @@
     // Map the resize handle
     xcb_map_window([connection connection], resizeHandleWindow);
 
-    // Raise resize handle above siblings (titlebar, client window) so it's always visible
+    // Raise resize handle above siblings (titlebar, client window) so it captures events
     [resizeHandle stackAbove];
 
     [connection flush];
