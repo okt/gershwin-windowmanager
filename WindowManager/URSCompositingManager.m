@@ -57,6 +57,14 @@
 @property (assign, nonatomic) int16_t shadowOffsetY;
 @property (assign, nonatomic) uint16_t shadowWidth;
 @property (assign, nonatomic) uint16_t shadowHeight;
+// Animation state
+@property (assign, nonatomic) BOOL animating;
+@property (assign, nonatomic) BOOL animatingMinimize;
+@property (assign, nonatomic) BOOL animatingFade;
+@property (assign, nonatomic) NSTimeInterval animationStart;
+@property (assign, nonatomic) NSTimeInterval animationDuration;
+@property (assign, nonatomic) XCBRect animationStartRect;
+@property (assign, nonatomic) XCBRect animationEndRect;
 @end
 
 @implementation URSCompositeWindow
@@ -82,6 +90,13 @@
         _shadowOffsetY = 0;
         _shadowWidth = 0;
         _shadowHeight = 0;
+        _animating = NO;
+        _animatingMinimize = NO;
+        _animatingFade = NO;
+        _animationStart = 0;
+        _animationDuration = 0;
+        _animationStartRect = XCBInvalidRect;
+        _animationEndRect = XCBInvalidRect;
     }
     return self;
 }
@@ -144,6 +159,10 @@
 @property (assign, nonatomic) int shmId;
 @property (assign, nonatomic) void *shmAddr;
 @property (assign, nonatomic) size_t shmSize;
+
+// Animation timer
+@property (strong, nonatomic) NSTimer *animationTimer;
+@property (assign, nonatomic) NSUInteger activeAnimations;
 
 @end
 
@@ -211,6 +230,9 @@
         _shmId = -1;
         _shmAddr = NULL;
         _shmSize = 0;
+
+        _animationTimer = nil;
+        _activeAnimations = 0;
         
         // Initialize Gaussian shadow data
         _gaussianMap = make_gaussian_map((double)SHADOW_RADIUS, &_gaussianSize);
@@ -1222,6 +1244,11 @@
     
     cw.viewable = NO;
     cw.damaged = NO;
+
+    if (cw.animating) {
+        // Keep resources alive until animation completes
+        return;
+    }
     
     // Free window data but keep the damage object
     [self freeWindowData:cw delete:NO];
@@ -1539,6 +1566,177 @@
     }
 }
 
+static inline double URSClampDouble(double value, double min, double max) {
+    if (value < min) return min;
+    if (value > max) return max;
+    return value;
+}
+
+static inline double URSEaseSmooth(double t) {
+    return t * t * (3.0 - (2.0 * t));
+}
+
+static inline xcb_render_transform_t URSIdentityTransform(void) {
+    xcb_render_transform_t transform;
+    transform.matrix11 = 1 << 16;
+    transform.matrix12 = 0;
+    transform.matrix13 = 0;
+    transform.matrix21 = 0;
+    transform.matrix22 = 1 << 16;
+    transform.matrix23 = 0;
+    transform.matrix31 = 0;
+    transform.matrix32 = 0;
+    transform.matrix33 = 1 << 16;
+    return transform;
+}
+
+- (void)startAnimationTimerIfNeeded {
+    if (self.animationTimer || self.activeAnimations == 0) {
+        return;
+    }
+    self.animationTimer = [NSTimer scheduledTimerWithTimeInterval:0.016
+                                                           target:self
+                                                         selector:@selector(animationTimerFired:)
+                                                         userInfo:nil
+                                                          repeats:YES];
+}
+
+- (void)stopAnimationTimerIfIdle {
+    if (self.activeAnimations != 0) {
+        return;
+    }
+    if (self.animationTimer) {
+        [self.animationTimer invalidate];
+        self.animationTimer = nil;
+    }
+}
+
+- (void)animationTimerFired:(NSTimer *)timer {
+    if (!self.compositingActive || self.activeAnimations == 0) {
+        [self stopAnimationTimerIfIdle];
+        return;
+    }
+    [self damageScreen];
+}
+
+- (void)animateWindowMinimize:(xcb_window_t)windowId
+                     fromRect:(XCBRect)startRect
+                       toRect:(XCBRect)endRect {
+        [self animateWindowTransition:windowId
+                                                 fromRect:startRect
+                                                     toRect:endRect
+                                                 duration:0.42
+                                                         fade:YES
+                                                minimizing:YES];
+}
+
+- (void)animateWindowRestore:(xcb_window_t)windowId
+                    fromRect:(XCBRect)startRect
+                      toRect:(XCBRect)endRect {
+        [self animateWindowTransition:windowId
+                                                 fromRect:startRect
+                                                     toRect:endRect
+                                                 duration:0.42
+                                                         fade:YES
+                                                minimizing:NO];
+}
+
+- (void)animateWindowTransition:(xcb_window_t)windowId
+                                                fromRect:(XCBRect)startRect
+                                                    toRect:(XCBRect)endRect
+                                                duration:(NSTimeInterval)duration
+                                                        fade:(BOOL)fade {
+                [self animateWindowTransition:windowId
+                                                         fromRect:startRect
+                                                             toRect:endRect
+                                                         duration:duration
+                                                                 fade:fade
+                                                        minimizing:NO];
+}
+
+- (void)animateWindowTransition:(xcb_window_t)windowId
+                                                fromRect:(XCBRect)startRect
+                                                    toRect:(XCBRect)endRect
+                                                duration:(NSTimeInterval)duration
+                                                        fade:(BOOL)fade
+                                             minimizing:(BOOL)minimizing {
+        [self animateWindow:windowId fromRect:startRect toRect:endRect minimizing:minimizing duration:duration fade:fade];
+}
+
+- (void)animateWindow:(xcb_window_t)windowId
+                         fromRect:(XCBRect)startRect
+                             toRect:(XCBRect)endRect
+                     minimizing:(BOOL)minimizing
+                         duration:(NSTimeInterval)duration
+                                 fade:(BOOL)fade {
+    if (!self.compositingActive || windowId == XCB_NONE) {
+        return;
+    }
+
+    URSCompositeWindow *cw = [self findCWindow:windowId];
+    if (!cw) {
+        [self addWindow:windowId];
+        cw = [self findCWindow:windowId];
+    }
+
+    if (!cw) {
+        return;
+    }
+
+    NSTimeInterval now = [NSDate timeIntervalSinceReferenceDate];
+    BOOL wasAnimating = cw.animating;
+
+    cw.animationStartRect = startRect;
+    cw.animationEndRect = endRect;
+    cw.animationStart = now;
+    cw.animationDuration = duration;
+    cw.animating = YES;
+    cw.animatingMinimize = minimizing;
+    cw.animatingFade = fade;
+
+    if (!wasAnimating) {
+        self.activeAnimations += 1;
+    }
+
+    cw.pictureValid = NO;
+    cw.needsPictureCreation = YES;
+
+    [self startAnimationTimerIfNeeded];
+    [self scheduleComposite];
+}
+
+- (void)finishAnimationForWindow:(URSCompositeWindow *)cw {
+    if (!cw || !cw.animating) {
+        return;
+    }
+
+    BOOL wasMinimized = cw.animatingMinimize;
+
+    cw.animating = NO;
+    cw.animatingMinimize = NO;
+    cw.animatingFade = NO;
+    cw.animationStart = 0;
+    cw.animationDuration = 0;
+    cw.animationStartRect = XCBInvalidRect;
+    cw.animationEndRect = XCBInvalidRect;
+
+    if (self.activeAnimations > 0) {
+        self.activeAnimations -= 1;
+    }
+
+    if (wasMinimized) {
+        cw.viewable = NO;
+        cw.damaged = NO;
+        [self freeWindowData:cw delete:NO];
+    } else if (!cw.viewable) {
+        [self freeWindowData:cw delete:NO];
+    }
+
+    [self damageScreen];
+    [self scheduleRepair];
+    [self stopAnimationTimerIfIdle];
+}
+
 - (void)compositeScreen {
     [self damageScreen];
 }
@@ -1617,7 +1815,7 @@
             [self addWindow:win];
             cw = [self findCWindow:win];
         }
-        if (!cw || !cw.viewable) {
+        if (!cw || (!cw.viewable && !cw.animating)) {
             continue;
         }
 
@@ -1932,6 +2130,58 @@ static uint8_t sum_gaussian(double *map, int map_size, double opacity,
      withClipRegion:(xcb_xfixes_region_t)clipRegion {
     
     xcb_connection_t *conn = [self.connection connection];
+    BOOL animating = cw.animating;
+    NSTimeInterval now = [NSDate timeIntervalSinceReferenceDate];
+    double destX = screenX;
+    double destY = screenY;
+    double destW = (double)cw.width + (2.0 * (double)cw.borderWidth);
+    double destH = (double)cw.height + (2.0 * (double)cw.borderWidth);
+
+    if (animating && FnCheckXCBRectIsValid(cw.animationStartRect) &&
+        FnCheckXCBRectIsValid(cw.animationEndRect) && cw.animationDuration > 0.0) {
+        double t = (now - cw.animationStart) / cw.animationDuration;
+        t = URSClampDouble(t, 0.0, 1.0);
+        double ease = URSEaseSmooth(t);
+        double scaleEaseX = ease;
+        double scaleEaseY = t * t;
+        BOOL wasMinimize = cw.animatingMinimize;
+
+        double startW = fmax(1.0, (double)cw.animationStartRect.size.width);
+        double startH = fmax(1.0, (double)cw.animationStartRect.size.height);
+        double endW = fmax(1.0, (double)cw.animationEndRect.size.width);
+        double endH = fmax(1.0, (double)cw.animationEndRect.size.height);
+
+        double currentW = startW + (endW - startW) * scaleEaseX;
+        double currentH = startH + (endH - startH) * scaleEaseY;
+
+        double startCenterX = cw.animationStartRect.position.x + (startW * 0.5);
+        double endCenterX = cw.animationEndRect.position.x + (endW * 0.5);
+        double currentCenterX = startCenterX + (endCenterX - startCenterX) * ease;
+
+        double startBottom = cw.animationStartRect.position.y + startH;
+        double endBottom = cw.animationEndRect.position.y + endH;
+        double currentBottom = startBottom + (endBottom - startBottom) * ease;
+
+        destW = fmax(1.0, currentW);
+        destH = fmax(1.0, currentH);
+        destX = currentCenterX - (destW * 0.5);
+        destY = currentBottom - destH;
+
+        if (t >= 1.0 && wasMinimize) {
+            [self finishAnimationForWindow:cw];
+            return;
+        }
+
+        if (t >= 1.0) {
+            XCBRect finalRect = cw.animationEndRect;
+            [self finishAnimationForWindow:cw];
+            animating = NO;
+            destX = finalRect.position.x;
+            destY = finalRect.position.y;
+            destW = fmax(1.0, (double)finalRect.size.width);
+            destH = fmax(1.0, (double)finalRect.size.height);
+        }
+    }
     
     // Create shadow if needed (after resize)
     if (cw.shadowPicture == XCB_NONE && self.argbFormat != XCB_NONE) {
@@ -1939,7 +2189,7 @@ static uint8_t sum_gaussian(double *map, int map_size, double opacity,
     }
     
     // Draw shadow using Gaussian ARGB32 picture (smooth gradient)
-    if (cw.shadowPicture != XCB_NONE) {
+    if (cw.shadowPicture != XCB_NONE && !animating) {
         int16_t shadowX = screenX + cw.shadowOffsetX;
         int16_t shadowY = screenY + cw.shadowOffsetY;
         
@@ -1979,18 +2229,54 @@ static uint8_t sum_gaussian(double *map, int map_size, double opacity,
     }
     
     if (cw.picture != XCB_NONE) {
+        int16_t destXInt = (int16_t)llround(destX);
+        int16_t destYInt = (int16_t)llround(destY);
+        uint16_t destWInt = (uint16_t)URSClampDouble(destW, 1.0, 65535.0);
+        uint16_t destHInt = (uint16_t)URSClampDouble(destH, 1.0, 65535.0);
+        xcb_render_picture_t alphaMask = XCB_NONE;
+
+        if (animating) {
+            double srcW = fmax(1.0, (double)cw.width + (2.0 * (double)cw.borderWidth));
+            double srcH = fmax(1.0, (double)cw.height + (2.0 * (double)cw.borderWidth));
+            double sx = srcW / (double)destWInt;
+            double sy = srcH / (double)destHInt;
+
+            xcb_render_transform_t transform = URSIdentityTransform();
+            transform.matrix11 = (xcb_render_fixed_t)(sx * 65536.0);
+            transform.matrix22 = (xcb_render_fixed_t)(sy * 65536.0);
+            xcb_render_set_picture_transform(conn, cw.picture, transform);
+
+            if (cw.animatingFade) {
+                double t = URSClampDouble((now - cw.animationStart) / cw.animationDuration, 0.0, 1.0);
+                double alpha = cw.animatingMinimize ? (1.0 - (t * t)) : t;
+                alpha = URSClampDouble(alpha, 0.0, 1.0);
+                if (alpha < 0.999 && self.argbFormat != XCB_NONE) {
+                    alphaMask = [self createSolidPicture:0.0 g:0.0 b:0.0 a:alpha];
+                }
+            }
+        }
+
         // Paint the window - IncludeInferiors captures all child content
         // (titlebar, buttons, client content, etc.)
         xcb_render_composite(conn,
                             XCB_RENDER_PICT_OP_OVER,
                             cw.picture,
-                            XCB_NONE,
+                            alphaMask,
                             self.rootBuffer,
                             0, 0,
                             0, 0,
-                            screenX, screenY,
-                            cw.width + 2 * cw.borderWidth,
-                            cw.height + 2 * cw.borderWidth);
+                            destXInt, destYInt,
+                            destWInt,
+                            destHInt);
+
+        if (animating) {
+            xcb_render_transform_t reset = URSIdentityTransform();
+            xcb_render_set_picture_transform(conn, cw.picture, reset);
+        }
+
+        if (alphaMask != XCB_NONE) {
+            xcb_render_free_picture(conn, alphaMask);
+        }
     }
     // No need to recursively paint children - IncludeInferiors handles that
 }

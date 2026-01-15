@@ -1681,6 +1681,7 @@
                 if ([frame isMaximized]) {
                     // Restore from maximized
                     NSLog(@"GSTheme: Restoring window from maximized state");
+                    XCBRect startRect = [frame windowRect];
                     [frame restoreDimensionAndPosition];
 
                     // Explicitly resize the titlebar to match restored frame width
@@ -1713,10 +1714,29 @@
                     [titlebar putWindowBackgroundWithPixmap:[titlebar pixmap]];
                     [titlebar drawArea:[titlebar windowRect]];
 
+                    {
+                        Class compositorClass = NSClassFromString(@"URSCompositingManager");
+                        id compositor = nil;
+                        if (compositorClass && [compositorClass respondsToSelector:@selector(sharedManager)]) {
+                            compositor = [compositorClass performSelector:@selector(sharedManager)];
+                        }
+                        if (compositor && [compositor respondsToSelector:@selector(compositingActive)] &&
+                            [compositor compositingActive] &&
+                            [compositor respondsToSelector:@selector(animateWindowTransition:fromRect:toRect:duration:fade:)]) {
+                            XCBRect endRect = [frame windowRect];
+                            [compositor animateWindowTransition:[frame window]
+                                                 fromRect:startRect
+                                                   toRect:endRect
+                                                 duration:0.22
+                                                     fade:NO];
+                        }
+                    }
+
                     NSLog(@"GSTheme: Restore complete, titlebar redrawn");
                 } else {
                     // Maximize to workarea size (respects struts)
                     NSLog(@"GSTheme: Maximizing window");
+                    XCBRect startRect = [frame windowRect];
                     NSRect workarea = [self currentWorkarea];
                     XCBSize size = XCBMakeSize((uint32_t)workarea.size.width, (uint32_t)workarea.size.height);
                     XCBPoint position = XCBMakePoint((int32_t)workarea.origin.x, (int32_t)workarea.origin.y);
@@ -1749,6 +1769,24 @@
                     // Update background pixmap and copy to window
                     [titlebar putWindowBackgroundWithPixmap:[titlebar pixmap]];
                     [titlebar drawArea:[titlebar windowRect]];
+
+                    {
+                        Class compositorClass = NSClassFromString(@"URSCompositingManager");
+                        id compositor = nil;
+                        if (compositorClass && [compositorClass respondsToSelector:@selector(sharedManager)]) {
+                            compositor = [compositorClass performSelector:@selector(sharedManager)];
+                        }
+                        if (compositor && [compositor respondsToSelector:@selector(compositingActive)] &&
+                            [compositor compositingActive] &&
+                            [compositor respondsToSelector:@selector(animateWindowTransition:fromRect:toRect:duration:fade:)]) {
+                            XCBRect endRect = [frame windowRect];
+                            [compositor animateWindowTransition:[frame window]
+                                                 fromRect:startRect
+                                                   toRect:endRect
+                                                 duration:0.22
+                                                     fade:NO];
+                        }
+                    }
 
                     NSLog(@"GSTheme: Maximize complete, titlebar redrawn at new size");
                 }

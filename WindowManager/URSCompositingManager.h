@@ -9,6 +9,7 @@
 
 #import <Foundation/Foundation.h>
 #import <XCBKit/XCBConnection.h>
+#import <XCBKit/utils/XCBShape.h>
 
 @interface URSCompositingManager : NSObject
 
@@ -43,6 +44,19 @@
 
 // OPTIMIZATION: Notify compositor that stacking order changed (window raised/lowered)
 - (void)markStackingOrderDirty;
+
+// Window animations (compositing-only)
+- (void)animateWindowMinimize:(xcb_window_t)windowId
+                                         fromRect:(XCBRect)startRect
+                                             toRect:(XCBRect)endRect;
+- (void)animateWindowRestore:(xcb_window_t)windowId
+                                        fromRect:(XCBRect)startRect
+                                            toRect:(XCBRect)endRect;
+- (void)animateWindowTransition:(xcb_window_t)windowId
+                                                fromRect:(XCBRect)startRect
+                                                    toRect:(XCBRect)endRect
+                                                duration:(NSTimeInterval)duration
+                                                        fade:(BOOL)fade;
 
 // Force immediate repair without deferring to next runloop (use during interactive drag)
 - (void)performRepairNow;

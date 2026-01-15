@@ -328,18 +328,6 @@
         visualId = [screen screen]->root_visual;
     }
 
-    XCBVisual* visual = nil;
-    if (screen != nil) {
-        visual = [[XCBVisual alloc]
-                         initWithVisualId:visualId
-                           withVisualType:xcb_aux_find_visual_by_id([screen screen], visualId)];
-    } else {
-        // Fallback: create a visual with the id (may be 0) but avoid calling xcb_aux helpers with NULL
-        visual = [[XCBVisual alloc]
-                         initWithVisualId:visualId
-                           withVisualType:NULL];
-    }
-
     uint32_t mask = XCB_GC_FOREGROUND | XCB_GC_BACKGROUND | XCB_GC_GRAPHICS_EXPOSURES;
     uint32_t values[] = {[screen screen]->white_pixel, [screen screen]->white_pixel, 0};
     [self createGraphicContextWithMask:mask andValues:values];
@@ -400,7 +388,6 @@
     /*CairoDrawer *drawer = [[CairoDrawer alloc] initWithConnection:connection window:self];
      * [drawer drawContent];*/
 
-    visual = nil;
 }
 
 - (void) clearArea:(XCBRect)aRect generatesExposure:(BOOL)aValue

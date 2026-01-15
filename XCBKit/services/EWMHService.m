@@ -10,7 +10,16 @@
 #import "../functions/Transformers.h"
 #import "../enums/EEwmh.h"
 #import "../services/TitleBarSettingsService.h"
+#import "../utils/XCBShape.h"
 #import <unistd.h>
+
+@protocol URSCompositingManaging <NSObject>
++ (instancetype)sharedManager;
+- (BOOL)compositingActive;
+- (void)animateWindowRestore:(xcb_window_t)windowId
+                                        fromRect:(XCBRect)startRect
+                                            toRect:(XCBRect)endRect;
+@end
 
 @implementation EWMHService
 
@@ -638,12 +647,107 @@
 
     if ([anAtomMessageName isEqualToString:EWMHActiveWindow])
     {
+        BOOL wasMinimized = NO;
+        XCBFrame *frame = nil;
+        XCBTitleBar *titleBar = nil;
+        XCBWindow *clientWindow = aWindow;
+
+        if ([[aWindow parentWindow] isKindOfClass:[XCBFrame class]])
+        {
+            frame = (XCBFrame *) [aWindow parentWindow];
+            titleBar = (XCBTitleBar *) [frame childWindowForKey:TitleBar];
+            clientWindow = [frame childWindowForKey:ClientWindow];
+            wasMinimized = [frame isMinimized] || [aWindow isMinimized];
+        }
+        else
+        {
+            wasMinimized = [aWindow isMinimized];
+        }
+
+        if (wasMinimized)
+        {
+            if (frame)
+            {
+                [connection mapWindow:frame];
+                [frame setIsMinimized:NO];
+                [frame setNormalState];
+            }
+
+            if (titleBar)
+            {
+                [connection mapWindow:titleBar];
+                [titleBar drawTitleBarComponents];
+            }
+
+            if (clientWindow)
+            {
+                [connection mapWindow:clientWindow];
+                [clientWindow setIsMinimized:NO];
+                [clientWindow setNormalState];
+            }
+
+            XCBWindow *restoreTarget = frame ? (XCBWindow *)frame : aWindow;
+            if (restoreTarget)
+            {
+                xcb_get_property_reply_t *reply = [self getProperty:EWMHWMIconGeometry
+                                                      propertyType:XCB_ATOM_CARDINAL
+                                                         forWindow:aWindow
+                                                            delete:NO
+                                                            length:4];
+                XCBRect iconRect = XCBInvalidRect;
+                if (reply)
+                {
+                    int len = xcb_get_property_value_length(reply);
+                    if (len >= (int)(sizeof(uint32_t) * 4))
+                    {
+                        uint32_t *values = (uint32_t *)xcb_get_property_value(reply);
+                        XCBPoint pos = XCBMakePoint(values[0], values[1]);
+                        XCBSize size = XCBMakeSize((uint16_t)values[2], (uint16_t)values[3]);
+                        if (size.width > 0 && size.height > 0)
+                        {
+                            iconRect = XCBMakeRect(pos, size);
+                        }
+                    }
+                    free(reply);
+                }
+
+                if (!FnCheckXCBRectIsValid(iconRect))
+                {
+                    XCBScreen *screen = [aWindow screen];
+                    if (screen)
+                    {
+                        uint16_t iconSize = 48;
+                        double x = ((double)[screen width] - iconSize) * 0.5;
+                        double y = (double)[screen height] - iconSize;
+                        iconRect = XCBMakeRect(XCBMakePoint(x, y), XCBMakeSize(iconSize, iconSize));
+                    }
+                }
+
+                Class compositorClass = NSClassFromString(@"URSCompositingManager");
+                if (compositorClass && [compositorClass respondsToSelector:@selector(sharedManager)])
+                {
+                    id<URSCompositingManaging> compositor = [compositorClass performSelector:@selector(sharedManager)];
+                    if (compositor && [compositor respondsToSelector:@selector(compositingActive)] &&
+                        [compositor compositingActive])
+                    {
+                        XCBRect endRect = [restoreTarget windowRect];
+                        if ([compositor respondsToSelector:@selector(animateWindowRestore:fromRect:toRect:)])
+                        {
+                            [compositor animateWindowRestore:[restoreTarget window]
+                                                  fromRect:iconRect
+                                                    toRect:endRect];
+                        }
+                    }
+                }
+            }
+        }
+
         [aWindow focus];
 
         if ([[aWindow parentWindow] isKindOfClass:[XCBFrame class]])
         {
-            XCBFrame *frame = (XCBFrame *) [aWindow parentWindow];
-            XCBTitleBar *titleBar = (XCBTitleBar *) [frame childWindowForKey:TitleBar];
+            frame = (XCBFrame *) [aWindow parentWindow];
+            titleBar = (XCBTitleBar *) [frame childWindowForKey:TitleBar];
             [frame stackAbove];
             [titleBar drawTitleBarComponents];
             [connection drawAllTitleBarsExcept:titleBar];
@@ -1305,12 +1409,12 @@
         return NO;
     }
     
-    xcb_atom_t *atoms = (xcb_atom_t *)xcb_get_property_value(propReply);
+    xcb_atom_t *typeAtoms = (xcb_atom_t *)xcb_get_property_value(propReply);
     xcb_atom_t dockAtom = [atomService atomFromCachedAtomsWithKey:EWMHWMWindowTypeDock];
     
     BOOL isDock = NO;
     for (uint32_t i = 0; i < propReply->length; i++) {
-        if (atoms[i] == dockAtom) {
+        if (typeAtoms[i] == dockAtom) {
             isDock = YES;
             break;
         }

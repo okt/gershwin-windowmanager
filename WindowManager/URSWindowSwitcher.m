@@ -7,6 +7,15 @@
 //
 
 #import "URSWindowSwitcher.h"
+#import <XCBKit/utils/XCBShape.h>
+
+@protocol URSCompositingManaging <NSObject>
++ (instancetype)sharedManager;
+- (BOOL)compositingActive;
+- (void)animateWindowRestore:(xcb_window_t)windowId
+                                        fromRect:(XCBRect)startRect
+                                            toRect:(XCBRect)endRect;
+@end
 #import <XCBKit/XCBTitleBar.h>
 #import <XCBKit/XCBScreen.h>
 #import <XCBKit/services/ICCCMService.h>
@@ -414,6 +423,54 @@
         // Map the frame window itself
         xcb_map_window(conn, [frame window]);
         [self.connection flush];
+
+        // Trigger compositing restore animation (Alt-Tab path)
+        {
+            Class compositorClass = NSClassFromString(@"URSCompositingManager");
+            id<URSCompositingManaging> compositor = nil;
+            if (compositorClass && [compositorClass respondsToSelector:@selector(sharedManager)]) {
+                compositor = [compositorClass performSelector:@selector(sharedManager)];
+            }
+            if (compositor && [compositor compositingActive]) {
+                XCBRect iconRect = XCBInvalidRect;
+                EWMHService *ewmhService = [EWMHService sharedInstanceWithConnection:self.connection];
+                if (clientWindow) {
+                    xcb_get_property_reply_t *reply = [ewmhService getProperty:[ewmhService EWMHWMIconGeometry]
+                                                              propertyType:XCB_ATOM_CARDINAL
+                                                                 forWindow:clientWindow
+                                                                    delete:NO
+                                                                    length:4];
+                    if (reply) {
+                        int len = xcb_get_property_value_length(reply);
+                        if (len >= (int)(sizeof(uint32_t) * 4)) {
+                            uint32_t *values = (uint32_t *)xcb_get_property_value(reply);
+                            XCBPoint pos = XCBMakePoint(values[0], values[1]);
+                            XCBSize size = XCBMakeSize((uint16_t)values[2], (uint16_t)values[3]);
+                            if (size.width > 0 && size.height > 0) {
+                                iconRect = XCBMakeRect(pos, size);
+                            }
+                        }
+                        free(reply);
+                    }
+                }
+                if (!FnCheckXCBRectIsValid(iconRect)) {
+                    XCBScreen *screen = [frame onScreen];
+                    if (screen) {
+                        uint16_t iconSize = 48;
+                        double x = ((double)[screen width] - iconSize) * 0.5;
+                        double y = (double)[screen height] - iconSize;
+                        iconRect = XCBMakeRect(XCBMakePoint(x, y), XCBMakeSize(iconSize, iconSize));
+                    }
+                }
+
+                if (FnCheckXCBRectIsValid(iconRect)) {
+                    XCBRect endRect = [frame windowRect];
+                    [compositor animateWindowRestore:[frame window]
+                                          fromRect:iconRect
+                                            toRect:endRect];
+                }
+            }
+        }
         
         // Final stacking: raise to top
         uint32_t finalStackValues[] = { XCB_STACK_MODE_ABOVE };

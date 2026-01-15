@@ -19,6 +19,23 @@
 #import <xcb/xcb_aux.h>
 #import <enums/EIcccm.h>
 #import "services/TitleBarSettingsService.h"
+#import "utils/XCBShape.h"
+
+@protocol URSCompositingManaging <NSObject>
++ (instancetype)sharedManager;
+- (BOOL)compositingActive;
+- (void)animateWindowMinimize:(xcb_window_t)windowId
+                                         fromRect:(XCBRect)startRect
+                                             toRect:(XCBRect)endRect;
+- (void)animateWindowRestore:(xcb_window_t)windowId
+                                        fromRect:(XCBRect)startRect
+                                            toRect:(XCBRect)endRect;
+- (void)animateWindowTransition:(xcb_window_t)windowId
+                                                fromRect:(XCBRect)startRect
+                                                    toRect:(XCBRect)endRect
+                                                duration:(NSTimeInterval)duration
+                                                        fade:(BOOL)fade;
+@end
 
 @implementation XCBConnection
 
@@ -570,6 +587,23 @@ static XCBConnection *sharedInstance;
                         [groupedWindow setIsMinimized:NO];
                         [groupedWindow setNormalState];
 
+                        if (groupedFrame) {
+                            Class compositorClass = NSClassFromString(@"URSCompositingManager");
+                            id<URSCompositingManaging> compositor = nil;
+                            if (compositorClass && [compositorClass respondsToSelector:@selector(sharedManager)]) {
+                                compositor = [compositorClass performSelector:@selector(sharedManager)];
+                            }
+                            if (compositor && [compositor compositingActive]) {
+                                XCBWindow *iconWindow = groupedWindow;
+                                XCBRect iconRect = XCBInvalidRect;
+                                [self resolveIconGeometryForWindow:iconWindow outRect:&iconRect];
+                                XCBRect endRect = [groupedFrame windowRect];
+                                [compositor animateWindowRestore:[groupedFrame window]
+                                                       fromRect:iconRect
+                                                         toRect:endRect];
+                            }
+                        }
+
                         // Focus only the originally requested window
                         if ([groupedWindow window] == [window window])
                         {
@@ -603,6 +637,23 @@ static XCBConnection *sharedInstance;
                     [window setIsMinimized:NO];
                     [frame setNormalState];
                     [window setNormalState];
+
+                    {
+                        Class compositorClass = NSClassFromString(@"URSCompositingManager");
+                        id<URSCompositingManaging> compositor = nil;
+                        if (compositorClass && [compositorClass respondsToSelector:@selector(sharedManager)]) {
+                            compositor = [compositorClass performSelector:@selector(sharedManager)];
+                        }
+                        if (compositor && [compositor compositingActive]) {
+                            XCBWindow *iconWindow = window;
+                            XCBRect iconRect = XCBInvalidRect;
+                            [self resolveIconGeometryForWindow:iconWindow outRect:&iconRect];
+                            XCBRect endRect = [frame windowRect];
+                            [compositor animateWindowRestore:[frame window]
+                                                   fromRect:iconRect
+                                                     toRect:endRect];
+                        }
+                    }
 
                     // Bring to front and focus
                     [frame stackAbove];
@@ -1274,7 +1325,25 @@ static XCBConnection *sharedInstance;
 
         if ([frame isMaximized])
         {
+            XCBRect startRect = [frame windowRect];
             [frame restoreDimensionAndPosition];
+
+            {
+                Class compositorClass = NSClassFromString(@"URSCompositingManager");
+                id<URSCompositingManaging> compositor = nil;
+                if (compositorClass && [compositorClass respondsToSelector:@selector(sharedManager)]) {
+                    compositor = [compositorClass performSelector:@selector(sharedManager)];
+                }
+                if (compositor && [compositor compositingActive] &&
+                    [compositor respondsToSelector:@selector(animateWindowTransition:fromRect:toRect:duration:fade:)]) {
+                    XCBRect endRect = [frame windowRect];
+                    [compositor animateWindowTransition:[frame window]
+                                             fromRect:startRect
+                                               toRect:endRect
+                                             duration:0.22
+                                                 fade:NO];
+                }
+            }
 
             clientWindow = nil;
             titleBar = nil;
@@ -1299,6 +1368,7 @@ static XCBConnection *sharedInstance;
             NSLog(@"[Maximize] No workarea set, using full screen: %u x %u", workareaWidth, workareaHeight);
         }
 
+        XCBRect startRect = [frame windowRect];
         /*** frame - maximize to workarea, not full screen **/
         XCBSize size = XCBMakeSize(workareaWidth, workareaHeight);
         XCBPoint position = XCBMakePoint(workareaX, workareaY);
@@ -1317,6 +1387,23 @@ static XCBConnection *sharedInstance;
         position = XCBMakePoint(0.0, titleHgt - 1);
         [clientWindow maximizeToSize:size andPosition:position];
         [clientWindow setFullScreen:YES];
+
+        {
+            Class compositorClass = NSClassFromString(@"URSCompositingManager");
+            id<URSCompositingManaging> compositor = nil;
+            if (compositorClass && [compositorClass respondsToSelector:@selector(sharedManager)]) {
+                compositor = [compositorClass performSelector:@selector(sharedManager)];
+            }
+            if (compositor && [compositor compositingActive] &&
+                [compositor respondsToSelector:@selector(animateWindowTransition:fromRect:toRect:duration:fade:)]) {
+                XCBRect endRect = [frame windowRect];
+                [compositor animateWindowTransition:[frame window]
+                                         fromRect:startRect
+                                           toRect:endRect
+                                         duration:0.22
+                                             fade:NO];
+            }
+        }
         
         /*** Update resize handle position if it exists ***/
         [frame updateResizeHandlePosition];
@@ -1648,6 +1735,45 @@ static XCBConnection *sharedInstance;
     return;
 }
 
+- (BOOL)resolveIconGeometryForWindow:(XCBWindow *)window outRect:(XCBRect *)rectOut
+{
+    if (!window || !rectOut) {
+        return NO;
+    }
+
+    EWMHService *ewmhService = [EWMHService sharedInstanceWithConnection:self];
+    xcb_get_property_reply_t *reply = [ewmhService getProperty:[ewmhService EWMHWMIconGeometry]
+                                                  propertyType:XCB_ATOM_CARDINAL
+                                                     forWindow:window
+                                                        delete:NO
+                                                        length:4];
+    if (reply) {
+        int len = xcb_get_property_value_length(reply);
+        if (len >= (int)(sizeof(uint32_t) * 4)) {
+            uint32_t *values = (uint32_t *)xcb_get_property_value(reply);
+            XCBPoint pos = XCBMakePoint(values[0], values[1]);
+            XCBSize size = XCBMakeSize((uint16_t)values[2], (uint16_t)values[3]);
+            if (size.width > 0 && size.height > 0) {
+                *rectOut = XCBMakeRect(pos, size);
+                free(reply);
+                return YES;
+            }
+        }
+        free(reply);
+    }
+
+    XCBScreen *screen = [window onScreen];
+    if (!screen) {
+        return NO;
+    }
+
+    uint16_t iconSize = 48;
+    double x = ((double)[screen width] - iconSize) * 0.5;
+    double y = (double)[screen height] - iconSize;
+    *rectOut = XCBMakeRect(XCBMakePoint(x, y), XCBMakeSize(iconSize, iconSize));
+    return NO;
+}
+
 - (void)handleClientMessage:(xcb_client_message_event_t *)anEvent
 {
     XCBAtomService *atomService = [XCBAtomService sharedInstanceWithConnection:self];
@@ -1728,6 +1854,24 @@ static XCBConnection *sharedInstance;
     {
         NSLog(@"[WM_CHANGE_STATE] Minimizing window %u - just hiding", anEvent->window);
 
+        XCBWindow *targetWindow = frame ? (XCBWindow *)frame : window;
+        if (targetWindow) {
+            Class compositorClass = NSClassFromString(@"URSCompositingManager");
+            id<URSCompositingManaging> compositor = nil;
+            if (compositorClass && [compositorClass respondsToSelector:@selector(sharedManager)]) {
+                compositor = [compositorClass performSelector:@selector(sharedManager)];
+            }
+            if (compositor && [compositor compositingActive]) {
+                XCBWindow *iconWindow = clientWindow ? clientWindow : targetWindow;
+                XCBRect iconRect = XCBInvalidRect;
+                [self resolveIconGeometryForWindow:iconWindow outRect:&iconRect];
+                XCBRect startRect = [targetWindow windowRect];
+                [compositor animateWindowMinimize:[targetWindow window]
+                                        fromRect:startRect
+                                          toRect:iconRect];
+            }
+        }
+
         // Simply hide the windows - no preview, no mini window
         if (frame != nil)
         {
@@ -1775,6 +1919,24 @@ static XCBConnection *sharedInstance;
             [self mapWindow:clientWindow];
             [clientWindow setIsMinimized:NO];
             [clientWindow setNormalState];
+        }
+
+        XCBWindow *restoreTarget = frame ? (XCBWindow *)frame : window;
+        if (restoreTarget) {
+            Class compositorClass = NSClassFromString(@"URSCompositingManager");
+            id<URSCompositingManaging> compositor = nil;
+            if (compositorClass && [compositorClass respondsToSelector:@selector(sharedManager)]) {
+                compositor = [compositorClass performSelector:@selector(sharedManager)];
+            }
+            if (compositor && [compositor compositingActive]) {
+                XCBWindow *iconWindow = clientWindow ? clientWindow : restoreTarget;
+                XCBRect iconRect = XCBInvalidRect;
+                [self resolveIconGeometryForWindow:iconWindow outRect:&iconRect];
+                XCBRect endRect = [restoreTarget windowRect];
+                [compositor animateWindowRestore:[restoreTarget window]
+                                       fromRect:iconRect
+                                         toRect:endRect];
+            }
         }
 
         [frame stackAbove];
