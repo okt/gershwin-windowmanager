@@ -524,6 +524,24 @@
             [connection handleButtonRelease:releaseEvent];
             // After resize completes, update the titlebar with GSTheme
             [self handleResizeComplete:releaseEvent];
+
+            // If this was a move/drag end on a titlebar or frame, refresh compositor pixmap
+            if (self.compositingManager && [self.compositingManager compositingActive]) {
+                XCBWindow *releasedWindow = [connection windowForXCBId:releaseEvent->event];
+                XCBFrame *frame = nil;
+                if ([releasedWindow isKindOfClass:[XCBFrame class]]) {
+                    frame = (XCBFrame *)releasedWindow;
+                } else if ([releasedWindow isKindOfClass:[XCBTitleBar class]]) {
+                    frame = (XCBFrame *)[releasedWindow parentWindow];
+                } else if ([releasedWindow parentWindow] && [[releasedWindow parentWindow] isKindOfClass:[XCBFrame class]]) {
+                    frame = (XCBFrame *)[releasedWindow parentWindow];
+                }
+
+                if (frame) {
+                    [self.compositingManager invalidateWindowPixmap:[frame window]];
+                    [self.compositingManager performRepairNow];
+                }
+            }
             break;
         }
         case XCB_MAP_NOTIFY: {
@@ -533,6 +551,8 @@
             // Notify compositor of map event
             if (self.compositingManager && [self.compositingManager compositingActive]) {
                 [self.compositingManager mapWindow:notifyEvent->window];
+                // Track mapped child windows (e.g., GPU/GL subwindows) to receive damage events
+                [self registerChildWindowsForCompositor:notifyEvent->window depth:2];
             }
             break;
         }
@@ -559,6 +579,15 @@
             // Register window with compositor if active
             if (self.compositingManager && [self.compositingManager compositingActive]) {
                 [self.compositingManager registerWindow:mapRequestEvent->window];
+                // Register any existing child windows so their damage events are tracked
+                [self registerChildWindowsForCompositor:mapRequestEvent->window depth:3];
+                // If the client got framed, register children of the frame too
+                XCBWindow *clientWindow = [connection windowForXCBId:mapRequestEvent->window];
+                if (clientWindow && [[clientWindow parentWindow] isKindOfClass:[XCBFrame class]]) {
+                    XCBFrame *frame = (XCBFrame *)[clientWindow parentWindow];
+                    [self.compositingManager registerWindow:[frame window]];
+                    [self registerChildWindowsForCompositor:[frame window] depth:3];
+                }
             }
 
             // Hide borders for windows with fixed sizes (like info panels and logout)
@@ -604,6 +633,16 @@
         case XCB_CONFIGURE_REQUEST: {
             xcb_configure_request_event_t *configRequest = (xcb_configure_request_event_t *)event;
             [connection handleConfigureWindowRequest:configRequest];
+            break;
+        }
+        case XCB_CREATE_NOTIFY: {
+            xcb_create_notify_event_t *createNotify = (xcb_create_notify_event_t *)event;
+            [connection handleCreateNotify:createNotify];
+            // Track newly created child windows for damage (e.g., GL subwindows)
+            if (self.compositingManager && [self.compositingManager compositingActive]) {
+                [self.compositingManager registerWindow:createNotify->window];
+                [self registerChildWindowsForCompositor:createNotify->window depth:2];
+            }
             break;
         }
         case XCB_CONFIGURE_NOTIFY: {
@@ -668,6 +707,34 @@
             break;
         }
     }
+}
+
+- (void)registerChildWindowsForCompositor:(xcb_window_t)parentWindow depth:(NSUInteger)depth
+{
+    if (!self.compositingManager || ![self.compositingManager compositingActive]) {
+        return;
+    }
+    if (depth == 0 || parentWindow == XCB_NONE) {
+        return;
+    }
+
+    xcb_connection_t *xcbConn = [connection connection];
+    xcb_query_tree_cookie_t tree_cookie = xcb_query_tree(xcbConn, parentWindow);
+    xcb_query_tree_reply_t *tree_reply = xcb_query_tree_reply(xcbConn, tree_cookie, NULL);
+    if (!tree_reply) {
+        return;
+    }
+
+    xcb_window_t *children = xcb_query_tree_children(tree_reply);
+    int num_children = xcb_query_tree_children_length(tree_reply);
+
+    for (int i = 0; i < num_children; i++) {
+        xcb_window_t child = children[i];
+        [self.compositingManager registerWindow:child];
+        [self registerChildWindowsForCompositor:child depth:depth - 1];
+    }
+
+    free(tree_reply);
 }
 
 - (BOOL)eventNeedsFlush:(xcb_generic_event_t*)event

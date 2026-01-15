@@ -1064,10 +1064,31 @@
         cw.extents = XCB_NONE;
     }
 
-    // BUGFIX: Invalidate NameWindowPixmap on move to prevent ghost artifacts
-    // The NameWindowPixmap is tied to the window's old position in the X server's
-    // offscreen storage. When the window moves, we need a fresh pixmap reference
-    // to ensure the compositor paints from the correct location.
+    // Mark stacking order dirty (window moved)
+    self.stackingOrderDirty = YES;
+}
+
+- (void)invalidateWindowPixmap:(xcb_window_t)windowId {
+    if (!self.compositingActive) {
+        return;
+    }
+
+    URSCompositeWindow *cw = [self findCWindow:windowId];
+
+    // If the window isn't directly tracked, it might be a child window.
+    if (!cw) {
+        xcb_window_t parentFrame = [self findParentFrameWindow:windowId];
+        if (parentFrame != XCB_NONE) {
+            cw = [self findCWindow:parentFrame];
+        }
+    }
+
+    if (!cw) {
+        return;
+    }
+
+    xcb_connection_t *conn = [self.connection connection];
+
     if (cw.nameWindowPixmap != XCB_NONE) {
         xcb_free_pixmap(conn, cw.nameWindowPixmap);
         cw.nameWindowPixmap = XCB_NONE;
@@ -1079,13 +1100,9 @@
     cw.pictureValid = NO;
     cw.needsPictureCreation = YES;
 
-    // BUGFIX: Flush immediately to ensure X server processes the pixmap/picture
-    // invalidation before we attempt to create new ones. This prevents race
-    // conditions where we read stale content from a partially-freed pixmap.
-    [self.connection flush];
-
-    // Mark stacking order dirty (window moved)
-    self.stackingOrderDirty = YES;
+    // Ensure updated content is repainted
+    [self damageWindowArea:cw];
+    [self scheduleRepair];
 }
 
 - (void)resizeWindow:(xcb_window_t)windowId x:(int16_t)x y:(int16_t)y 

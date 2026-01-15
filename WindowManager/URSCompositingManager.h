@@ -38,8 +38,8 @@
 - (void)moveWindow:(xcb_window_t)windowId x:(int16_t)x y:(int16_t)y;
 - (void)resizeWindow:(xcb_window_t)windowId x:(int16_t)x y:(int16_t)y 
                width:(uint16_t)width height:(uint16_t)height;
-// Move window without resize (for drag operations) - more efficient than resizeWindow
-- (void)moveWindow:(xcb_window_t)windowId x:(int16_t)x y:(int16_t)y;
+// Invalidate cached pixmap/picture for a window (force re-acquire after move)
+- (void)invalidateWindowPixmap:(xcb_window_t)windowId;
 
 // OPTIMIZATION: Notify compositor that stacking order changed (window raised/lowered)
 - (void)markStackingOrderDirty;
