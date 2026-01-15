@@ -897,6 +897,10 @@
     isAbove = YES;
     isBelow = NO;
     NSLog(@"[STACK] Window %u raised to top", window);
+
+    EWMHService *ewmhService = [EWMHService sharedInstanceWithConnection:connection];
+    [ewmhService updateNetClientList];
+    ewmhService = nil;
 }
 
 - (void)stackBelow
@@ -906,6 +910,10 @@
     xcb_configure_window([connection connection], window, XCB_CONFIG_WINDOW_STACK_MODE, &values);
     isAbove = NO;
     isBelow = YES;
+
+    EWMHService *ewmhService = [EWMHService sharedInstanceWithConnection:connection];
+    [ewmhService updateNetClientList];
+    ewmhService = nil;
 }
 
 - (void)grabButton

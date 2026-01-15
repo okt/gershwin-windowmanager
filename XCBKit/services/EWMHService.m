@@ -1084,13 +1084,69 @@
                      withDataLength:size
                            withData:[connection clientList]];
 
-    [self changePropertiesForWindow:rootWindow
-                           withMode:XCB_PROP_MODE_REPLACE
-                       withProperty:EWMHClientListStacking
-                           withType:XCB_ATOM_WINDOW
-                         withFormat:32
-                     withDataLength:size
-                           withData:[connection clientList]];
+    // _NET_CLIENT_LIST_STACKING must reflect actual stacking order (bottom-to-top)
+    if (size > 0) {
+        xcb_connection_t *conn = [connection connection];
+        xcb_query_tree_cookie_t tree_cookie = xcb_query_tree(conn, [rootWindow window]);
+        xcb_query_tree_reply_t *tree_reply = xcb_query_tree_reply(conn, tree_cookie, NULL);
+
+        xcb_window_t stackingList[size];
+        uint32_t stackingCount = 0;
+
+        if (tree_reply) {
+            xcb_window_t *children = xcb_query_tree_children(tree_reply);
+            int num_children = xcb_query_tree_children_length(tree_reply);
+
+            NSMutableSet *clientSet = [NSMutableSet setWithCapacity:size];
+            for (uint32_t i = 0; i < size; i++) {
+                [clientSet addObject:@([connection clientList][i])];
+            }
+
+            for (int i = 0; i < num_children; i++) {
+                NSNumber *childNumber = @(children[i]);
+                if ([clientSet containsObject:childNumber]) {
+                    stackingList[stackingCount++] = children[i];
+                }
+            }
+
+            // Append any clients not present in the query tree (e.g., unmapped)
+            if (stackingCount < size) {
+                NSMutableSet *addedSet = [NSMutableSet setWithCapacity:stackingCount];
+                for (uint32_t i = 0; i < stackingCount; i++) {
+                    [addedSet addObject:@(stackingList[i])];
+                }
+                for (uint32_t i = 0; i < size; i++) {
+                    NSNumber *clientNumber = @([connection clientList][i]);
+                    if (![addedSet containsObject:clientNumber]) {
+                        stackingList[stackingCount++] = [clientNumber unsignedIntValue];
+                    }
+                }
+            }
+
+            free(tree_reply);
+        } else {
+            // Fallback to client registration order if stacking can't be queried
+            for (uint32_t i = 0; i < size; i++) {
+                stackingList[stackingCount++] = [connection clientList][i];
+            }
+        }
+
+        [self changePropertiesForWindow:rootWindow
+                               withMode:XCB_PROP_MODE_REPLACE
+                           withProperty:EWMHClientListStacking
+                               withType:XCB_ATOM_WINDOW
+                             withFormat:32
+                         withDataLength:stackingCount
+                               withData:stackingList];
+    } else {
+        [self changePropertiesForWindow:rootWindow
+                               withMode:XCB_PROP_MODE_REPLACE
+                           withProperty:EWMHClientListStacking
+                               withType:XCB_ATOM_WINDOW
+                             withFormat:32
+                         withDataLength:0
+                               withData:NULL];
+    }
 
     rootWindow = nil;
 }

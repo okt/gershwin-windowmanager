@@ -30,6 +30,7 @@
 // Per-window compositing data
 @interface URSCompositeWindow : NSObject
 @property (assign, nonatomic) xcb_window_t windowId;
+@property (assign, nonatomic) xcb_window_t parentWindowId;
 @property (assign, nonatomic) xcb_damage_damage_t damage;
 @property (assign, nonatomic) xcb_pixmap_t nameWindowPixmap;
 @property (assign, nonatomic) xcb_render_picture_t picture;
@@ -63,6 +64,7 @@
     self = [super init];
     if (self) {
         _windowId = XCB_NONE;
+        _parentWindowId = XCB_NONE;
         _damage = XCB_NONE;
         _nameWindowPixmap = XCB_NONE;
         _picture = XCB_NONE;
@@ -146,6 +148,26 @@
 @end
 
 @implementation URSCompositingManager
+
+- (void)updateAbsolutePositionForWindow:(URSCompositeWindow *)cw {
+    if (!cw || cw.windowId == XCB_NONE || self.rootWindow == XCB_NONE) {
+        return;
+    }
+
+    xcb_connection_t *conn = [self.connection connection];
+    xcb_translate_coordinates_cookie_t cookie = xcb_translate_coordinates(conn,
+                                                                          cw.windowId,
+                                                                          self.rootWindow,
+                                                                          0, 0);
+    xcb_translate_coordinates_reply_t *reply = xcb_translate_coordinates_reply(conn, cookie, NULL);
+    if (!reply) {
+        return;
+    }
+
+    cw.x = reply->dst_x;
+    cw.y = reply->dst_y;
+    free(reply);
+}
 
 + (instancetype)sharedManager {
     static URSCompositingManager *sharedManager = nil;
@@ -811,6 +833,17 @@
     cw.visual = attr->visual;
     cw.viewable = (attr->map_state == XCB_MAP_STATE_VIEWABLE);
     cw.redirected = YES;
+
+    // Track parent and compute absolute position in root coordinates
+    xcb_query_tree_cookie_t tree_cookie = xcb_query_tree(conn, windowId);
+    xcb_query_tree_reply_t *tree_reply = xcb_query_tree_reply(conn, tree_cookie, NULL);
+    if (tree_reply) {
+        cw.parentWindowId = tree_reply->parent;
+        free(tree_reply);
+    } else {
+        cw.parentWindowId = XCB_NONE;
+    }
+    [self updateAbsolutePositionForWindow:cw];
     
     // Create damage object for the window
     cw.damage = xcb_generate_id(conn);
@@ -936,6 +969,22 @@
     }
     
     xcb_connection_t *conn = [self.connection connection];
+
+    // Translate to root coordinates for child windows
+    int16_t newX = x;
+    int16_t newY = y;
+    if (cw.parentWindowId != XCB_NONE && cw.parentWindowId != self.rootWindow) {
+        xcb_translate_coordinates_cookie_t cookie = xcb_translate_coordinates(conn,
+                                                                              cw.windowId,
+                                                                              self.rootWindow,
+                                                                              0, 0);
+        xcb_translate_coordinates_reply_t *reply = xcb_translate_coordinates_reply(conn, cookie, NULL);
+        if (reply) {
+            newX = reply->dst_x;
+            newY = reply->dst_y;
+            free(reply);
+        }
+    }
     
     // PERFORMANCE FIX: During drag, only damage once with combined old+new area
     // Instead of damaging old area, updating position, then damaging new area
@@ -970,8 +1019,8 @@
         }
         
         // New position (including shadow if present)
-        rects[1].x = x;
-        rects[1].y = y;
+        rects[1].x = newX;
+        rects[1].y = newY;
         rects[1].width = cw.width + 2 * cw.borderWidth;
         rects[1].height = cw.height + 2 * cw.borderWidth;
         
@@ -979,16 +1028,16 @@
         if (cw.shadowPicture != XCB_NONE) {
             // Shadow offsets are typically negative, so we need to expand the rectangle
             // to encompass both the window and its shadow
-            int16_t shadow_x = x + cw.shadowOffsetX;
-            int16_t shadow_y = y + cw.shadowOffsetY;
-            int16_t window_right = x + cw.width + 2 * cw.borderWidth;
-            int16_t window_bottom = y + cw.height + 2 * cw.borderWidth;
+            int16_t shadow_x = newX + cw.shadowOffsetX;
+            int16_t shadow_y = newY + cw.shadowOffsetY;
+            int16_t window_right = newX + cw.width + 2 * cw.borderWidth;
+            int16_t window_bottom = newY + cw.height + 2 * cw.borderWidth;
             int16_t shadow_right = shadow_x + cw.shadowWidth;
             int16_t shadow_bottom = shadow_y + cw.shadowHeight;
             
             // Calculate bounding box that includes both window and shadow
-            rects[1].x = (shadow_x < x) ? shadow_x : x;
-            rects[1].y = (shadow_y < y) ? shadow_y : y;
+            rects[1].x = (shadow_x < newX) ? shadow_x : newX;
+            rects[1].y = (shadow_y < newY) ? shadow_y : newY;
             int16_t right = (shadow_right > window_right) ? shadow_right : window_right;
             int16_t bottom = (shadow_bottom > window_bottom) ? shadow_bottom : window_bottom;
             rects[1].width = right - rects[1].x;
@@ -1002,8 +1051,8 @@
     }
     
     // Update position
-    cw.x = x;
-    cw.y = y;
+    cw.x = newX;
+    cw.y = newY;
     
     // Invalidate regions since position changed
     if (cw.borderSize != XCB_NONE) {
@@ -1051,6 +1100,22 @@
     }
     
     xcb_connection_t *conn = [self.connection connection];
+
+    // Translate to root coordinates for child windows
+    int16_t newX = x;
+    int16_t newY = y;
+    if (cw.parentWindowId != XCB_NONE && cw.parentWindowId != self.rootWindow) {
+        xcb_translate_coordinates_cookie_t cookie = xcb_translate_coordinates(conn,
+                                                                              cw.windowId,
+                                                                              self.rootWindow,
+                                                                              0, 0);
+        xcb_translate_coordinates_reply_t *reply = xcb_translate_coordinates_reply(conn, cookie, NULL);
+        if (reply) {
+            newX = reply->dst_x;
+            newY = reply->dst_y;
+            free(reply);
+        }
+    }
     
     // If visible, damage the old area
     if (cw.viewable) {
@@ -1082,7 +1147,7 @@
     }
     
     // If position or size changed, invalidate regions
-    if (cw.width != width || cw.height != height || cw.x != x || cw.y != y) {
+    if (cw.width != width || cw.height != height || cw.x != newX || cw.y != newY) {
         if (cw.borderSize != XCB_NONE) {
             xcb_xfixes_destroy_region(conn, cw.borderSize);
             cw.borderSize = XCB_NONE;
@@ -1094,8 +1159,8 @@
     }
     
     // Update cached geometry
-    cw.x = x;
-    cw.y = y;
+    cw.x = newX;
+    cw.y = newY;
     cw.width = width;
     cw.height = height;
     
@@ -1166,8 +1231,13 @@
     }
 
     if (!cw || !cw.damage) {
+        // Unknown window damaged; force full screen repaint to avoid artifacts
+        [self damageScreen];
         return;
     }
+
+    // Keep root-relative coordinates current for damage calculations
+    [self updateAbsolutePositionForWindow:cw];
 
     [self repairWindow:cw];
 }
@@ -1483,6 +1553,10 @@
 // OPTIMIZATION: Notify that stacking order changed (e.g., window raised/lowered)
 - (void)markStackingOrderDirty {
     self.stackingOrderDirty = YES;
+    if (self.compositingActive) {
+        // Ensure compositor refreshes even if no damage was reported
+        [self scheduleComposite];
+    }
 }
 
 - (void)paintAll:(xcb_xfixes_region_t)region {
@@ -1527,6 +1601,12 @@
             cw = [self findCWindow:win];
         }
         if (!cw || !cw.viewable) {
+            continue;
+        }
+
+        // Only paint top-level windows (root children). Child windows are
+        // composited via IncludeInferiors on their parent.
+        if (cw.parentWindowId != XCB_NONE && cw.parentWindowId != self.rootWindow) {
             continue;
         }
         

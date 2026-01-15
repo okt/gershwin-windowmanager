@@ -617,6 +617,20 @@
                                                     y:configureNotify->y
                                                 width:configureNotify->width
                                                height:configureNotify->height];
+                // Stacking can also change via ConfigureNotify (stack mode), ensure repaint
+                [self.compositingManager markStackingOrderDirty];
+            }
+            break;
+        }
+        case XCB_REPARENT_NOTIFY: {
+            xcb_reparent_notify_event_t *reparentNotify = (xcb_reparent_notify_event_t *)event;
+            [connection handleReparentNotify:reparentNotify];
+
+            if (self.compositingManager && [self.compositingManager compositingActive]) {
+                // Re-register to refresh parent/geometry and avoid stale artifacts
+                [self.compositingManager unregisterWindow:reparentNotify->window];
+                [self.compositingManager registerWindow:reparentNotify->window];
+                [self.compositingManager scheduleComposite];
             }
             break;
         }
