@@ -859,7 +859,8 @@
             
             // Step 2: Raise the frame (same as handleButtonPress)
             [entry.frame stackAbove];
-            
+            [entry.frame raiseResizeHandle];
+
             // Step 3: Update titlebar state and redraw all titlebars (same as handleButtonPress)
             if (titleBar) {
                 [titleBar setIsAbove:YES];

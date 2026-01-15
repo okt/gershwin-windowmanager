@@ -749,6 +749,7 @@
             frame = (XCBFrame *) [aWindow parentWindow];
             titleBar = (XCBTitleBar *) [frame childWindowForKey:TitleBar];
             [frame stackAbove];
+            [frame raiseResizeHandle];
             [titleBar drawTitleBarComponents];
             [connection drawAllTitleBarsExcept:titleBar];
             frame = nil;
