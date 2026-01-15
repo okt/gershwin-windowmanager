@@ -249,37 +249,37 @@
 - (void)createResizeHandle
 {
     XCBScreen *scr = [parentWindow screen];
-    
+
     // Get scrollbar width from current theme
     CGFloat scrollerWidth = [NSScroller scrollerWidth];
     uint16_t handleSize = (uint16_t)scrollerWidth;
-    
+
     // Create a square at bottom-right matching scrollbar width
     xcb_window_t resizeHandleWindow = xcb_generate_id([connection connection]);
-    
+
     XCBRect frameRect = [self windowRect];
     int16_t handleX = frameRect.size.width - handleSize;
     int16_t handleY = frameRect.size.height - handleSize;
-    
+
     uint32_t mask = XCB_CW_BACK_PIXEL | XCB_CW_EVENT_MASK | XCB_CW_CURSOR;
     uint32_t values[3];
-    
-    // Blue color for the handle
+
+    // Blue color for the resize handle (debug/placeholder - theme will override)
     xcb_alloc_color_cookie_t color_cookie = xcb_alloc_color([connection connection],
                                                              [scr screen]->default_colormap,
                                                              0, 0, 65535); // Blue: RGB(0,0,255)
     xcb_alloc_color_reply_t *color_reply = xcb_alloc_color_reply([connection connection], color_cookie, NULL);
-    uint32_t blue_pixel = color_reply ? color_reply->pixel : [scr screen]->white_pixel;
+    uint32_t bg_pixel = color_reply ? color_reply->pixel : [scr screen]->white_pixel;
     free(color_reply);
-    
+
     // Get diagonal resize cursor (bottom-right)
     xcb_cursor_t resizeCursor = [[self cursor] selectResizeCursorForPosition:BottomRightCorner];
-    
-    values[0] = blue_pixel;
-    values[1] = XCB_EVENT_MASK_BUTTON_PRESS | XCB_EVENT_MASK_BUTTON_RELEASE | 
+
+    values[0] = bg_pixel;
+    values[1] = XCB_EVENT_MASK_BUTTON_PRESS | XCB_EVENT_MASK_BUTTON_RELEASE |
                 XCB_EVENT_MASK_POINTER_MOTION | XCB_EVENT_MASK_ENTER_WINDOW | XCB_EVENT_MASK_LEAVE_WINDOW;
     values[2] = resizeCursor;
-    
+
     xcb_create_window([connection connection],
                       XCB_COPY_FROM_PARENT,
                       resizeHandleWindow,
@@ -291,18 +291,22 @@
                       [scr screen]->root_visual,
                       mask,
                       values);
-    
+
     // Create XCBWindow wrapper and register it
     XCBWindow *resizeHandle = [[XCBWindow alloc] initWithXCBWindow:resizeHandleWindow andConnection:connection];
     [resizeHandle setParentWindow:self];
     [self addChildWindow:resizeHandle withKey:ResizeHandle];
     [connection registerWindow:resizeHandle];
-    
+
     // Map the resize handle
     xcb_map_window([connection connection], resizeHandleWindow);
+
+    // Raise resize handle above siblings (titlebar, client window) so it's always visible
+    [resizeHandle stackAbove];
+
     [connection flush];
-    
-    NSLog(@"Created resize handle for frame %u at position (%d, %d) with size %u (scrollbar width)", 
+
+    NSLog(@"Created resize handle for frame %u at position (%d, %d) with size %u (scrollbar width)",
           window, handleX, handleY, handleSize);
 }
 
