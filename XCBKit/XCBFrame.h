@@ -53,6 +53,7 @@ typedef NS_ENUM(NSInteger, childrenMask)
 - (void) restoreDimensionAndPosition;
 - (void) createResizeHandle;
 - (void) updateResizeHandlePosition;
+- (void) raiseResizeHandle;
 
 
  /********************************

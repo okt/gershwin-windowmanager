@@ -362,16 +362,25 @@
         // Get current scrollbar width from theme
         CGFloat scrollerWidth = [NSScroller scrollerWidth];
         uint16_t handleSize = (uint16_t)scrollerWidth;
-        
+
         XCBRect frameRect = [self windowRect];
         int16_t handleX = frameRect.size.width - handleSize;
         int16_t handleY = frameRect.size.height - handleSize;
-        
-        uint32_t values[2] = {handleX, handleY};
-        xcb_configure_window([connection connection], 
-                           [resizeHandle window], 
-                           XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y, 
+
+        // Update position and ensure handle stays above siblings in one call
+        uint32_t values[3] = {handleX, handleY, XCB_STACK_MODE_ABOVE};
+        xcb_configure_window([connection connection],
+                           [resizeHandle window],
+                           XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y | XCB_CONFIG_WINDOW_STACK_MODE,
                            values);
+    }
+}
+
+- (void)raiseResizeHandle
+{
+    XCBWindow *resizeHandle = [self childWindowForKey:ResizeHandle];
+    if (resizeHandle) {
+        [resizeHandle stackAbove];
     }
 }
 

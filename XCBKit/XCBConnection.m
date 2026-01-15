@@ -657,6 +657,7 @@ static XCBConnection *sharedInstance;
 
                     // Bring to front and focus
                     [frame stackAbove];
+                    [frame raiseResizeHandle];
 
                     if (titleBar)
                     {
@@ -1016,6 +1017,7 @@ static XCBConnection *sharedInstance;
         [frame stackBelow];
     } else {
         [frame stackAbove];
+        [frame raiseResizeHandle];
     }
     [[frame childWindowForKey:TitleBar] setIsAbove:YES];
     [self drawAllTitleBarsExcept:(XCBTitleBar*)[frame childWindowForKey:TitleBar]];
@@ -1489,6 +1491,7 @@ static XCBConnection *sharedInstance;
         // Don't raise desktop windows - they should always stay at the bottom
         if (!isDesktopWindow) {
             [frame stackAbove];
+            [frame raiseResizeHandle];
             NSLog(@"[ACTIVATE] Frame raised");
         }
     } else if (window && [window isKindOfClass:[XCBWindow class]]) {
@@ -1814,6 +1817,7 @@ static XCBConnection *sharedInstance;
             {
                 frame = (XCBFrame *) [window parentWindow];
                 [frame stackAbove];
+                [frame raiseResizeHandle];
                 titleBar = (XCBTitleBar *) [frame childWindowForKey:TitleBar]; //TODO: Can i put all this in a single method?
                 [titleBar drawTitleBarComponents];
                 [self drawAllTitleBarsExcept:titleBar];
@@ -1940,6 +1944,7 @@ static XCBConnection *sharedInstance;
         }
 
         [frame stackAbove];
+        [frame raiseResizeHandle];
         [clientWindow focus];
         [self drawAllTitleBarsExcept:titleBar];
 
