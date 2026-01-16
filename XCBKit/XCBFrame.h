@@ -10,6 +10,7 @@
 #import "XCBWindow.h"
 #import "XCBConnection.h"
 #import "enums/EMousePosition.h"
+#import "enums/EResizeDirection.h"
 
 
 #define WM_MIN_WINDOW_HEIGHT 431
@@ -19,7 +20,15 @@ typedef NS_ENUM(NSInteger, childrenMask)
 {
     TitleBar = 0,
     ClientWindow = 1,
-    ResizeHandle = 2
+    ResizeHandle = 2,    // Legacy (keep for backwards compatibility)
+    ResizeZoneNW = 10,
+    ResizeZoneN = 11,
+    ResizeZoneNE = 12,
+    ResizeZoneE = 13,
+    ResizeZoneSE = 14,
+    ResizeZoneS = 15,
+    ResizeZoneSW = 16,
+    ResizeZoneW = 17
 };
 
 @interface XCBFrame : XCBWindow
@@ -54,6 +63,11 @@ typedef NS_ENUM(NSInteger, childrenMask)
 - (void) createResizeHandle;
 - (void) updateResizeHandlePosition;
 - (void) raiseResizeHandle;
+
+// Theme-driven resize zones
+- (void) createResizeZonesFromTheme;
+- (void) updateAllResizeZonePositions;
+- (void) destroyResizeZones;
 
 
  /********************************

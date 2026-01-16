@@ -12,6 +12,16 @@
 #import "services/TitleBarSettingsService.h"
 #import "utils/CairoDrawer.h"
 #import <AppKit/NSScroller.h>
+#import <GNUstepGUI/GSTheme.h>
+
+// Informal protocol for theme-driven resize zones
+// Themes implementing these methods enable the resize zone protocol
+@interface NSObject (GSThemeResizeZones)
+- (CGFloat)resizeZoneCornerSize;
+- (CGFloat)resizeZoneEdgeThickness;
+- (BOOL)resizeZoneEnabled:(NSInteger)direction;
+- (BOOL)themeRendersResizeVisual;
+@end
 
 
 @implementation XCBFrame
@@ -230,9 +240,9 @@
     // Flush to ensure reparent and map operations complete before continuing
     [connection flush];
     
-    // Create resize handle for resizable windows with decorations only
+    // Create resize zones for resizable windows with decorations only
     if ([clientWindow canResize] && [clientWindow decorated]) {
-        [self createResizeHandle];
+        [self createResizeZonesFromTheme];
     }
 
     titleBar = nil;
@@ -248,8 +258,6 @@
 
 - (void)createResizeHandle
 {
-    XCBScreen *scr = [parentWindow screen];
-
     // Get scrollbar width from current theme
     CGFloat scrollerWidth = [NSScroller scrollerWidth];
     uint16_t handleSize = (uint16_t)scrollerWidth;
@@ -339,16 +347,37 @@
     }
 
 
-    /** width and height **/
+    /** width and height - corner resizes **/
 
-    if (rightBorderClicked && bottomBorderClicked && !leftBorderClicked)
+    // SE corner (bottom-right)
+    if (rightBorderClicked && bottomBorderClicked && !leftBorderClicked && !topBorderClicked)
     {
         resizeFromAngleForEvent(anEvent, aXcbConnection, self, minWidthHint, minHeightHint, titleHeight);
-        //[self configureClient];
     }
-    
-    // Update resize handle position if it exists
-    [self updateResizeHandlePosition];
+
+    // NW corner (top-left) - combine top and left resizes
+    if (topBorderClicked && leftBorderClicked && !rightBorderClicked && !bottomBorderClicked)
+    {
+        resizeFromTopForEvent(anEvent, aXcbConnection, self, minHeightHint, titleHeight);
+        resizeFromLeftForEvent(anEvent, aXcbConnection, self, minWidthHint);
+    }
+
+    // NE corner (top-right) - combine top and right resizes
+    if (topBorderClicked && rightBorderClicked && !leftBorderClicked && !bottomBorderClicked)
+    {
+        resizeFromTopForEvent(anEvent, aXcbConnection, self, minHeightHint, titleHeight);
+        resizeFromRightForEvent(anEvent, aXcbConnection, self, minWidthHint);
+    }
+
+    // SW corner (bottom-left) - combine bottom and left resizes
+    if (bottomBorderClicked && leftBorderClicked && !rightBorderClicked && !topBorderClicked)
+    {
+        resizeFromBottomForEvent(anEvent, aXcbConnection, self, minHeightHint, titleHeight);
+        resizeFromLeftForEvent(anEvent, aXcbConnection, self, minWidthHint);
+    }
+
+    // Update resize zone positions if they exist
+    [self updateAllResizeZonePositions];
 
 }
 
@@ -375,9 +404,216 @@
 
 - (void)raiseResizeHandle
 {
+    // Raise legacy resize handle
     XCBWindow *resizeHandle = [self childWindowForKey:ResizeHandle];
     if (resizeHandle) {
         [resizeHandle stackAbove];
+    }
+
+    // Raise all theme-driven resize zones
+    childrenMask zones[] = {ResizeZoneNW, ResizeZoneN, ResizeZoneNE, ResizeZoneE,
+                           ResizeZoneSE, ResizeZoneS, ResizeZoneSW, ResizeZoneW};
+    for (int i = 0; i < sizeof(zones)/sizeof(zones[0]); i++) {
+        XCBWindow *zone = [self childWindowForKey:zones[i]];
+        if (zone) {
+            [zone stackAbove];
+        }
+    }
+}
+
+#pragma mark - Theme-driven Resize Zones
+
+- (void)createResizeZonesFromTheme
+{
+    // Query theme for resize zone support using respondsToSelector:
+    // This allows themes to implement resize zones without requiring libs-gui changes
+    GSTheme *theme = [GSTheme theme];
+
+    NSLog(@"createResizeZonesFromTheme: theme=%@ class=%@", theme, [theme class]);
+
+    // Check if theme supports the resize zone protocol
+    if (![theme respondsToSelector:@selector(resizeZoneCornerSize)]) {
+        // Theme doesn't support resize zones - fall back to legacy single resize handle
+        NSLog(@"Theme does NOT support resize zone protocol - falling back to legacy resize handle");
+        [self createResizeHandle];
+        return;
+    }
+
+    NSLog(@"Theme SUPPORTS resize zone protocol!");
+
+    // Get resize zone dimensions from theme
+    CGFloat cornerSize = [theme resizeZoneCornerSize];
+    CGFloat edgeThickness = 4.0; // Default edge thickness
+
+    if ([theme respondsToSelector:@selector(resizeZoneEdgeThickness)]) {
+        edgeThickness = [theme resizeZoneEdgeThickness];
+    }
+
+    XCBRect frameRect = [self windowRect];
+    CGFloat w = frameRect.size.width;
+    CGFloat h = frameRect.size.height;
+
+    // Create resize zones for all 8 directions
+    // Corners (square zones)
+    [self createResizeZoneAtX:0 y:0
+                        width:cornerSize height:cornerSize
+                     position:TopLeftCorner
+                          key:ResizeZoneNW];
+
+    [self createResizeZoneAtX:w - cornerSize y:0
+                        width:cornerSize height:cornerSize
+                     position:TopRightCorner
+                          key:ResizeZoneNE];
+
+    [self createResizeZoneAtX:0 y:h - cornerSize
+                        width:cornerSize height:cornerSize
+                     position:BottomLeftCorner
+                          key:ResizeZoneSW];
+
+    [self createResizeZoneAtX:w - cornerSize y:h - cornerSize
+                        width:cornerSize height:cornerSize
+                     position:BottomRightCorner
+                          key:ResizeZoneSE];
+
+    // Edges (thin zones between corners)
+    [self createResizeZoneAtX:cornerSize y:0
+                        width:w - 2*cornerSize height:edgeThickness
+                     position:TopBorder
+                          key:ResizeZoneN];
+
+    [self createResizeZoneAtX:cornerSize y:h - edgeThickness
+                        width:w - 2*cornerSize height:edgeThickness
+                     position:BottomBorder
+                          key:ResizeZoneS];
+
+    [self createResizeZoneAtX:0 y:cornerSize
+                        width:edgeThickness height:h - 2*cornerSize
+                     position:LeftBorder
+                          key:ResizeZoneW];
+
+    [self createResizeZoneAtX:w - edgeThickness y:cornerSize
+                        width:edgeThickness height:h - 2*cornerSize
+                     position:RightBorder
+                          key:ResizeZoneE];
+
+    NSLog(@"Created theme-driven resize zones: cornerSize=%.1f, edgeThickness=%.1f", cornerSize, edgeThickness);
+}
+
+- (void)createResizeZoneAtX:(CGFloat)x y:(CGFloat)y
+                      width:(CGFloat)width height:(CGFloat)height
+                   position:(MousePosition)position
+                        key:(childrenMask)key
+{
+    // Skip if zone would have invalid dimensions
+    if (width <= 0 || height <= 0) {
+        return;
+    }
+
+    xcb_window_t zoneWindow = xcb_generate_id([connection connection]);
+
+    // DEBUG: Use INPUT_OUTPUT with pink background to visualize resize zones
+    // Change to INPUT_ONLY and remove XCB_CW_BACK_PIXEL for production
+    uint32_t mask = XCB_CW_BACK_PIXEL | XCB_CW_EVENT_MASK | XCB_CW_CURSOR;
+    uint32_t values[3];
+
+    // Get appropriate resize cursor for this position
+    xcb_cursor_t resizeCursor = [[self cursor] selectResizeCursorForPosition:position];
+
+    // Pink color for debugging (0xFFB6C1 = light pink in RGB)
+    values[0] = 0x00FF69B4;  // Hot pink
+    values[1] = XCB_EVENT_MASK_BUTTON_PRESS | XCB_EVENT_MASK_BUTTON_RELEASE |
+                XCB_EVENT_MASK_POINTER_MOTION | XCB_EVENT_MASK_ENTER_WINDOW | XCB_EVENT_MASK_LEAVE_WINDOW;
+    values[2] = resizeCursor;
+
+    XCBScreen *scr = [parentWindow screen];
+    xcb_create_window([connection connection],
+                      [scr screen]->root_depth,  // Need depth for visible window
+                      zoneWindow,
+                      window, // Parent is the frame
+                      (int16_t)x, (int16_t)y,
+                      (uint16_t)width, (uint16_t)height,
+                      0, // no border
+                      XCB_WINDOW_CLASS_INPUT_OUTPUT,  // DEBUG: visible window
+                      [scr screen]->root_visual,
+                      mask,
+                      values);
+
+    // Create XCBWindow wrapper and register it
+    XCBWindow *resizeZone = [[XCBWindow alloc] initWithXCBWindow:zoneWindow andConnection:connection];
+    [resizeZone setParentWindow:self];
+    [self addChildWindow:resizeZone withKey:key];
+    [connection registerWindow:resizeZone];
+
+    // Map the resize zone
+    xcb_map_window([connection connection], zoneWindow);
+
+    // Raise above siblings
+    [resizeZone stackAbove];
+}
+
+- (void)updateAllResizeZonePositions
+{
+    GSTheme *theme = [GSTheme theme];
+
+    // Check if we're using theme-driven zones or legacy resize handle
+    if (![theme respondsToSelector:@selector(resizeZoneCornerSize)]) {
+        // Using legacy resize handle
+        [self updateResizeHandlePosition];
+        return;
+    }
+
+    CGFloat cornerSize = [theme resizeZoneCornerSize];
+    CGFloat edgeThickness = 4.0;
+
+    if ([theme respondsToSelector:@selector(resizeZoneEdgeThickness)]) {
+        edgeThickness = [theme resizeZoneEdgeThickness];
+    }
+
+    XCBRect frameRect = [self windowRect];
+    CGFloat w = frameRect.size.width;
+    CGFloat h = frameRect.size.height;
+
+    // Update corner positions
+    [self updateResizeZone:ResizeZoneNW toX:0 y:0 width:cornerSize height:cornerSize];
+    [self updateResizeZone:ResizeZoneNE toX:w - cornerSize y:0 width:cornerSize height:cornerSize];
+    [self updateResizeZone:ResizeZoneSW toX:0 y:h - cornerSize width:cornerSize height:cornerSize];
+    [self updateResizeZone:ResizeZoneSE toX:w - cornerSize y:h - cornerSize width:cornerSize height:cornerSize];
+
+    // Update edge positions
+    [self updateResizeZone:ResizeZoneN toX:cornerSize y:0 width:w - 2*cornerSize height:edgeThickness];
+    [self updateResizeZone:ResizeZoneS toX:cornerSize y:h - edgeThickness width:w - 2*cornerSize height:edgeThickness];
+    [self updateResizeZone:ResizeZoneW toX:0 y:cornerSize width:edgeThickness height:h - 2*cornerSize];
+    [self updateResizeZone:ResizeZoneE toX:w - edgeThickness y:cornerSize width:edgeThickness height:h - 2*cornerSize];
+}
+
+- (void)updateResizeZone:(childrenMask)key toX:(CGFloat)x y:(CGFloat)y width:(CGFloat)width height:(CGFloat)height
+{
+    XCBWindow *zone = [self childWindowForKey:key];
+    if (zone) {
+        uint32_t values[5] = {(uint32_t)x, (uint32_t)y, (uint32_t)width, (uint32_t)height, XCB_STACK_MODE_ABOVE};
+        xcb_configure_window([connection connection],
+                           [zone window],
+                           XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y |
+                           XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT |
+                           XCB_CONFIG_WINDOW_STACK_MODE,
+                           values);
+    }
+}
+
+- (void)destroyResizeZones
+{
+    // Destroy all resize zone windows
+    childrenMask zones[] = {ResizeZoneNW, ResizeZoneN, ResizeZoneNE, ResizeZoneE,
+                           ResizeZoneSE, ResizeZoneS, ResizeZoneSW, ResizeZoneW,
+                           ResizeHandle}; // Also handle legacy
+
+    for (int i = 0; i < sizeof(zones)/sizeof(zones[0]); i++) {
+        XCBWindow *zone = [self childWindowForKey:zones[i]];
+        if (zone) {
+            xcb_destroy_window([connection connection], [zone window]);
+            [connection unregisterWindow:zone];
+            [self removeChild:zones[i]];
+        }
     }
 }
 

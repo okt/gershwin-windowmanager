@@ -28,11 +28,17 @@
 @property (strong, nonatomic) NSString *resizeLeftCursorName;
 @property (strong, nonatomic) NSString *resizeTopCursorName;
 @property (strong, nonatomic) NSString *resizeBottomRightCornerCursorName;
+@property (strong, nonatomic) NSString *resizeTopLeftCornerCursorName;
+@property (strong, nonatomic) NSString *resizeTopRightCornerCursorName;
+@property (strong, nonatomic) NSString *resizeBottomLeftCornerCursorName;
 @property (assign, nonatomic) BOOL leftPointerSelected;
 @property (assign, nonatomic) BOOL resizeBottomSelected;
 @property (assign, nonatomic) BOOL resizeRightSelected;
 @property (assign, nonatomic) BOOL resizeLeftSelected;
 @property (assign, nonatomic) BOOL resizeBottomRightCornerSelected;
+@property (assign, nonatomic) BOOL resizeTopLeftCornerSelected;
+@property (assign, nonatomic) BOOL resizeTopRightCornerSelected;
+@property (assign, nonatomic) BOOL resizeBottomLeftCornerSelected;
 @property (assign, nonatomic) BOOL resizeTopSelected;
 
 - (instancetype)initWithConnection:(XCBConnection *)aConnection screen:(XCBScreen*)aScreen;

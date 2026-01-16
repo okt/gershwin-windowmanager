@@ -25,6 +25,12 @@
 @synthesize resizeLeftSelected;
 @synthesize resizeBottomRightCornerCursorName;
 @synthesize resizeBottomRightCornerSelected;
+@synthesize resizeTopLeftCornerCursorName;
+@synthesize resizeTopLeftCornerSelected;
+@synthesize resizeTopRightCornerCursorName;
+@synthesize resizeTopRightCornerSelected;
+@synthesize resizeBottomLeftCornerCursorName;
+@synthesize resizeBottomLeftCornerSelected;
 @synthesize resizeTopCursorName;
 @synthesize resizeTopSelected;
 
@@ -56,6 +62,9 @@
     resizeRightCursorName = @"w-resize";
     resizeLeftCursorName = @"e-resize";
     resizeBottomRightCornerCursorName = @"nwse-resize";
+    resizeTopLeftCornerCursorName = @"nw-resize";
+    resizeTopRightCornerCursorName = @"ne-resize";
+    resizeBottomLeftCornerCursorName = @"nesw-resize";
     resizeTopCursorName = @"n-resize";
 
 
@@ -71,6 +80,12 @@
     [cursors setObject:[NSNumber numberWithUnsignedInt:cursor] forKey:resizeLeftCursorName];
     cursor = xcb_cursor_load_cursor(context, [resizeBottomRightCornerCursorName cString]);
     [cursors setObject:[NSNumber numberWithUnsignedInt:cursor] forKey:resizeBottomRightCornerCursorName];
+    cursor = xcb_cursor_load_cursor(context, [resizeTopLeftCornerCursorName cString]);
+    [cursors setObject:[NSNumber numberWithUnsignedInt:cursor] forKey:resizeTopLeftCornerCursorName];
+    cursor = xcb_cursor_load_cursor(context, [resizeTopRightCornerCursorName cString]);
+    [cursors setObject:[NSNumber numberWithUnsignedInt:cursor] forKey:resizeTopRightCornerCursorName];
+    cursor = xcb_cursor_load_cursor(context, [resizeBottomLeftCornerCursorName cString]);
+    [cursors setObject:[NSNumber numberWithUnsignedInt:cursor] forKey:resizeBottomLeftCornerCursorName];
     cursor = xcb_cursor_load_cursor(context, [resizeTopCursorName cString]);
     [cursors setObject:[NSNumber numberWithUnsignedInt:cursor] forKey:resizeTopCursorName];
 
@@ -136,8 +151,47 @@
             resizeRightSelected = NO;
             resizeLeftSelected = NO;
             resizeBottomRightCornerSelected = NO;
+            resizeTopLeftCornerSelected = NO;
+            resizeTopRightCornerSelected = NO;
+            resizeBottomLeftCornerSelected = NO;
             resizeTopSelected = YES;
-           break;
+            break;
+        case TopLeftCorner:
+            cursor = [[cursors objectForKey:resizeTopLeftCornerCursorName] unsignedIntValue];
+            leftPointerSelected = NO;
+            resizeBottomSelected = NO;
+            resizeRightSelected = NO;
+            resizeLeftSelected = NO;
+            resizeBottomRightCornerSelected = NO;
+            resizeTopLeftCornerSelected = YES;
+            resizeTopRightCornerSelected = NO;
+            resizeBottomLeftCornerSelected = NO;
+            resizeTopSelected = NO;
+            break;
+        case TopRightCorner:
+            cursor = [[cursors objectForKey:resizeTopRightCornerCursorName] unsignedIntValue];
+            leftPointerSelected = NO;
+            resizeBottomSelected = NO;
+            resizeRightSelected = NO;
+            resizeLeftSelected = NO;
+            resizeBottomRightCornerSelected = NO;
+            resizeTopLeftCornerSelected = NO;
+            resizeTopRightCornerSelected = YES;
+            resizeBottomLeftCornerSelected = NO;
+            resizeTopSelected = NO;
+            break;
+        case BottomLeftCorner:
+            cursor = [[cursors objectForKey:resizeBottomLeftCornerCursorName] unsignedIntValue];
+            leftPointerSelected = NO;
+            resizeBottomSelected = NO;
+            resizeRightSelected = NO;
+            resizeLeftSelected = NO;
+            resizeBottomRightCornerSelected = NO;
+            resizeTopLeftCornerSelected = NO;
+            resizeTopRightCornerSelected = NO;
+            resizeBottomLeftCornerSelected = YES;
+            resizeTopSelected = NO;
+            break;
 
         default:
             break;
@@ -175,6 +229,9 @@
 
     resizeTopCursorName = nil;
     resizeBottomRightCornerCursorName = nil;
+    resizeTopLeftCornerCursorName = nil;
+    resizeTopRightCornerCursorName = nil;
+    resizeBottomLeftCornerCursorName = nil;
     resizeLeftCursorName = nil;
     resizeRightCursorName = nil;
     resizeBottomCursorName = nil;

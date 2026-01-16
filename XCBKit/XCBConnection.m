@@ -1407,8 +1407,8 @@ static XCBConnection *sharedInstance;
             }
         }
         
-        /*** Update resize handle position if it exists ***/
-        [frame updateResizeHandlePosition];
+        /*** Update resize zone positions if they exist ***/
+        [frame updateAllResizeZonePositions];
 
         ewmhService = nil;
         rootWindow = nil;
@@ -1565,21 +1565,97 @@ static XCBConnection *sharedInstance;
 
     if ([titleBar window] != anEvent->event && [[frame childWindowForKey:ClientWindow] canResize])
     {
-        // Check if click is on the resize handle
+        // Check if click is on any resize zone (new theme-driven zones or legacy handle)
+        BOOL handledResizeZone = NO;
+        xcb_window_t clickedWindow = anEvent->event;
+
+        // Check legacy resize handle (SE corner)
         XCBWindow *resizeHandle = [frame childWindowForKey:ResizeHandle];
-        if (resizeHandle && [resizeHandle window] == anEvent->event) {
-            // Clicked on the resize handle - start bottom-right corner resize
+        if (resizeHandle && [resizeHandle window] == clickedWindow) {
+            [frame setBottomBorderClicked:YES];
+            [frame setRightBorderClicked:YES];
+            handledResizeZone = YES;
+            NSLog(@"Legacy resize handle clicked - SE corner");
+        }
+
+        // Check theme-driven resize zones
+        // SE corner
+        XCBWindow *zoneSE = [frame childWindowForKey:ResizeZoneSE];
+        if (!handledResizeZone && zoneSE && [zoneSE window] == clickedWindow) {
+            [frame setBottomBorderClicked:YES];
+            [frame setRightBorderClicked:YES];
+            handledResizeZone = YES;
+            NSLog(@"ResizeZoneSE clicked - SE corner");
+        }
+
+        // NW corner
+        XCBWindow *zoneNW = [frame childWindowForKey:ResizeZoneNW];
+        if (!handledResizeZone && zoneNW && [zoneNW window] == clickedWindow) {
+            [frame setTopBorderClicked:YES];
+            [frame setLeftBorderClicked:YES];
+            handledResizeZone = YES;
+            NSLog(@"ResizeZoneNW clicked - NW corner");
+        }
+
+        // NE corner
+        XCBWindow *zoneNE = [frame childWindowForKey:ResizeZoneNE];
+        if (!handledResizeZone && zoneNE && [zoneNE window] == clickedWindow) {
+            [frame setTopBorderClicked:YES];
+            [frame setRightBorderClicked:YES];
+            handledResizeZone = YES;
+            NSLog(@"ResizeZoneNE clicked - NE corner");
+        }
+
+        // SW corner
+        XCBWindow *zoneSW = [frame childWindowForKey:ResizeZoneSW];
+        if (!handledResizeZone && zoneSW && [zoneSW window] == clickedWindow) {
+            [frame setBottomBorderClicked:YES];
+            [frame setLeftBorderClicked:YES];
+            handledResizeZone = YES;
+            NSLog(@"ResizeZoneSW clicked - SW corner");
+        }
+
+        // N edge
+        XCBWindow *zoneN = [frame childWindowForKey:ResizeZoneN];
+        if (!handledResizeZone && zoneN && [zoneN window] == clickedWindow) {
+            [frame setTopBorderClicked:YES];
+            handledResizeZone = YES;
+            NSLog(@"ResizeZoneN clicked - N edge");
+        }
+
+        // S edge
+        XCBWindow *zoneS = [frame childWindowForKey:ResizeZoneS];
+        if (!handledResizeZone && zoneS && [zoneS window] == clickedWindow) {
+            [frame setBottomBorderClicked:YES];
+            handledResizeZone = YES;
+            NSLog(@"ResizeZoneS clicked - S edge");
+        }
+
+        // E edge
+        XCBWindow *zoneE = [frame childWindowForKey:ResizeZoneE];
+        if (!handledResizeZone && zoneE && [zoneE window] == clickedWindow) {
+            [frame setRightBorderClicked:YES];
+            handledResizeZone = YES;
+            NSLog(@"ResizeZoneE clicked - E edge");
+        }
+
+        // W edge
+        XCBWindow *zoneW = [frame childWindowForKey:ResizeZoneW];
+        if (!handledResizeZone && zoneW && [zoneW window] == clickedWindow) {
+            [frame setLeftBorderClicked:YES];
+            handledResizeZone = YES;
+            NSLog(@"ResizeZoneW clicked - W edge");
+        }
+
+        if (handledResizeZone) {
             if (![frame grabPointer]) {
-                NSLog(@"Unable to grab the pointer for resize handle");
+                NSLog(@"Unable to grab the pointer for resize zone");
             } else {
                 resizeState = YES;
                 dragState = NO;
-                [frame setBottomBorderClicked:YES];
-                [frame setRightBorderClicked:YES];
-                NSLog(@"Resize handle clicked - starting corner resize");
             }
         } else {
-            // Check border clicks
+            // Check border clicks (fallback for clicking on frame borders directly)
             [self borderClickedForFrameWindow:frame withEvent:anEvent];
         }
     }
