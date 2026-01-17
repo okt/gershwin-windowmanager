@@ -9,11 +9,14 @@
 
 typedef NS_ENUM(NSInteger, MousePosition)
 {
+    None = 0,
     RightBorder,
     LeftBorder,
     TopBorder,
     BottomBorder,
     BottomRightCorner,
-    Error,
-    None
+    TopLeftCorner,
+    TopRightCorner,
+    BottomLeftCorner,
+    Error
 };

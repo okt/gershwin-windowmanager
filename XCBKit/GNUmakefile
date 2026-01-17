@@ -72,6 +72,7 @@ $(FRAMEWORK_NAME)_HEADER_FILES = \
 			enums/EXErrorMessages.h \
 			enums/EIcccm.h \
 			enums/EMousePosition.h \
+			enums/EResizeDirection.h \
 			enums/EEwmh.h \
 			enums/ERequests.h \
 			protocols/server/Server.h \
