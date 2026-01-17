@@ -25,6 +25,12 @@
 @synthesize resizeLeftSelected;
 @synthesize resizeBottomRightCornerCursorName;
 @synthesize resizeBottomRightCornerSelected;
+@synthesize resizeTopLeftCornerCursorName;
+@synthesize resizeTopLeftCornerSelected;
+@synthesize resizeTopRightCornerCursorName;
+@synthesize resizeTopRightCornerSelected;
+@synthesize resizeBottomLeftCornerCursorName;
+@synthesize resizeBottomLeftCornerSelected;
 @synthesize resizeTopCursorName;
 @synthesize resizeTopSelected;
 
@@ -51,12 +57,16 @@
 
     cursors = [[NSMutableDictionary alloc] init];
 
+    // Use standard X11 cursor font names (same as XCreateFontCursor)
     leftPointerName = @"left_ptr";
-    resizeBottomCursorName = @"s-resize";
-    resizeRightCursorName = @"w-resize";
-    resizeLeftCursorName = @"e-resize";
-    resizeBottomRightCornerCursorName = @"nwse-resize";
-    resizeTopCursorName = @"n-resize";
+    resizeBottomCursorName = @"bottom_side";
+    resizeRightCursorName = @"right_side";
+    resizeLeftCursorName = @"left_side";
+    resizeBottomRightCornerCursorName = @"bottom_right_corner";
+    resizeTopLeftCornerCursorName = @"top_left_corner";
+    resizeTopRightCornerCursorName = @"top_right_corner";
+    resizeBottomLeftCornerCursorName = @"bottom_left_corner";
+    resizeTopCursorName = @"top_side";
 
 
     cursor = xcb_cursor_load_cursor(context, [leftPointerName cString]);
@@ -67,10 +77,14 @@
     [cursors setObject:[NSNumber numberWithUnsignedInt:cursor] forKey:resizeRightCursorName];
     cursor = xcb_cursor_load_cursor(context, [resizeLeftCursorName cString]);
     [cursors setObject:[NSNumber numberWithUnsignedInt:cursor] forKey:resizeLeftCursorName];
-    cursor = xcb_cursor_load_cursor(context, [resizeLeftCursorName cString]);
-    [cursors setObject:[NSNumber numberWithUnsignedInt:cursor] forKey:resizeLeftCursorName];
     cursor = xcb_cursor_load_cursor(context, [resizeBottomRightCornerCursorName cString]);
     [cursors setObject:[NSNumber numberWithUnsignedInt:cursor] forKey:resizeBottomRightCornerCursorName];
+    cursor = xcb_cursor_load_cursor(context, [resizeTopLeftCornerCursorName cString]);
+    [cursors setObject:[NSNumber numberWithUnsignedInt:cursor] forKey:resizeTopLeftCornerCursorName];
+    cursor = xcb_cursor_load_cursor(context, [resizeTopRightCornerCursorName cString]);
+    [cursors setObject:[NSNumber numberWithUnsignedInt:cursor] forKey:resizeTopRightCornerCursorName];
+    cursor = xcb_cursor_load_cursor(context, [resizeBottomLeftCornerCursorName cString]);
+    [cursors setObject:[NSNumber numberWithUnsignedInt:cursor] forKey:resizeBottomLeftCornerCursorName];
     cursor = xcb_cursor_load_cursor(context, [resizeTopCursorName cString]);
     [cursors setObject:[NSNumber numberWithUnsignedInt:cursor] forKey:resizeTopCursorName];
 
@@ -136,8 +150,47 @@
             resizeRightSelected = NO;
             resizeLeftSelected = NO;
             resizeBottomRightCornerSelected = NO;
+            resizeTopLeftCornerSelected = NO;
+            resizeTopRightCornerSelected = NO;
+            resizeBottomLeftCornerSelected = NO;
             resizeTopSelected = YES;
-           break;
+            break;
+        case TopLeftCorner:
+            cursor = [[cursors objectForKey:resizeTopLeftCornerCursorName] unsignedIntValue];
+            leftPointerSelected = NO;
+            resizeBottomSelected = NO;
+            resizeRightSelected = NO;
+            resizeLeftSelected = NO;
+            resizeBottomRightCornerSelected = NO;
+            resizeTopLeftCornerSelected = YES;
+            resizeTopRightCornerSelected = NO;
+            resizeBottomLeftCornerSelected = NO;
+            resizeTopSelected = NO;
+            break;
+        case TopRightCorner:
+            cursor = [[cursors objectForKey:resizeTopRightCornerCursorName] unsignedIntValue];
+            leftPointerSelected = NO;
+            resizeBottomSelected = NO;
+            resizeRightSelected = NO;
+            resizeLeftSelected = NO;
+            resizeBottomRightCornerSelected = NO;
+            resizeTopLeftCornerSelected = NO;
+            resizeTopRightCornerSelected = YES;
+            resizeBottomLeftCornerSelected = NO;
+            resizeTopSelected = NO;
+            break;
+        case BottomLeftCorner:
+            cursor = [[cursors objectForKey:resizeBottomLeftCornerCursorName] unsignedIntValue];
+            leftPointerSelected = NO;
+            resizeBottomSelected = NO;
+            resizeRightSelected = NO;
+            resizeLeftSelected = NO;
+            resizeBottomRightCornerSelected = NO;
+            resizeTopLeftCornerSelected = NO;
+            resizeTopRightCornerSelected = NO;
+            resizeBottomLeftCornerSelected = YES;
+            resizeTopSelected = NO;
+            break;
 
         default:
             break;
@@ -175,6 +228,9 @@
 
     resizeTopCursorName = nil;
     resizeBottomRightCornerCursorName = nil;
+    resizeTopLeftCornerCursorName = nil;
+    resizeTopRightCornerCursorName = nil;
+    resizeBottomLeftCornerCursorName = nil;
     resizeLeftCursorName = nil;
     resizeRightCursorName = nil;
     resizeBottomCursorName = nil;

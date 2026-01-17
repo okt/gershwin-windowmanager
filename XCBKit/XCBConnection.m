@@ -657,6 +657,7 @@ static XCBConnection *sharedInstance;
 
                     // Bring to front and focus
                     [frame stackAbove];
+                    [frame raiseResizeHandle];
 
                     if (titleBar)
                     {
@@ -1002,11 +1003,10 @@ static XCBConnection *sharedInstance;
     [self registerWindow:window];*/
 
     NSLog(@"Client window decorated with id %u", [window window]);
+    [frame initCursor];  // Must init cursor BEFORE decorateClientWindow - resize zones need it
     [frame decorateClientWindow];
     [self mapWindow:frame];
     [self registerWindow:window];
-    
-    [frame initCursor];
     [window updateAttributes];
     [frame setScreen:[window screen]];
     [window setNormalState];
@@ -1016,6 +1016,7 @@ static XCBConnection *sharedInstance;
         [frame stackBelow];
     } else {
         [frame stackAbove];
+        [frame raiseResizeHandle];
     }
     [[frame childWindowForKey:TitleBar] setIsAbove:YES];
     [self drawAllTitleBarsExcept:(XCBTitleBar*)[frame childWindowForKey:TitleBar]];
@@ -1405,8 +1406,8 @@ static XCBConnection *sharedInstance;
             }
         }
         
-        /*** Update resize handle position if it exists ***/
-        [frame updateResizeHandlePosition];
+        /*** Update resize zone positions if they exist ***/
+        [frame updateAllResizeZonePositions];
 
         ewmhService = nil;
         rootWindow = nil;
@@ -1489,6 +1490,7 @@ static XCBConnection *sharedInstance;
         // Don't raise desktop windows - they should always stay at the bottom
         if (!isDesktopWindow) {
             [frame stackAbove];
+            [frame raiseResizeHandle];
             NSLog(@"[ACTIVATE] Frame raised");
         }
     } else if (window && [window isKindOfClass:[XCBWindow class]]) {
@@ -1562,21 +1564,94 @@ static XCBConnection *sharedInstance;
 
     if ([titleBar window] != anEvent->event && [[frame childWindowForKey:ClientWindow] canResize])
     {
-        // Check if click is on the resize handle
+        // Check if click is on any resize zone (new theme-driven zones or legacy handle)
+        BOOL handledResizeZone = NO;
+        xcb_window_t clickedWindow = anEvent->event;
+
+        // Check legacy resize handle (SE corner)
         XCBWindow *resizeHandle = [frame childWindowForKey:ResizeHandle];
-        if (resizeHandle && [resizeHandle window] == anEvent->event) {
-            // Clicked on the resize handle - start bottom-right corner resize
-            if (![frame grabPointer]) {
-                NSLog(@"Unable to grab the pointer for resize handle");
-            } else {
+        if (resizeHandle && [resizeHandle window] == clickedWindow) {
+            [frame setBottomBorderClicked:YES];
+            [frame setRightBorderClicked:YES];
+            handledResizeZone = YES;
+        }
+
+        // Check theme-driven resize zones
+        // SE corner
+        XCBWindow *zoneSE = [frame childWindowForKey:ResizeZoneSE];
+        if (!handledResizeZone && zoneSE && [zoneSE window] == clickedWindow) {
+            [frame setBottomBorderClicked:YES];
+            [frame setRightBorderClicked:YES];
+            handledResizeZone = YES;
+        }
+
+        // NW corner
+        XCBWindow *zoneNW = [frame childWindowForKey:ResizeZoneNW];
+        if (!handledResizeZone && zoneNW && [zoneNW window] == clickedWindow) {
+            [frame setTopBorderClicked:YES];
+            [frame setLeftBorderClicked:YES];
+            handledResizeZone = YES;
+        }
+
+        // NE corner
+        XCBWindow *zoneNE = [frame childWindowForKey:ResizeZoneNE];
+        if (!handledResizeZone && zoneNE && [zoneNE window] == clickedWindow) {
+            [frame setTopBorderClicked:YES];
+            [frame setRightBorderClicked:YES];
+            handledResizeZone = YES;
+        }
+
+        // SW corner
+        XCBWindow *zoneSW = [frame childWindowForKey:ResizeZoneSW];
+        if (!handledResizeZone && zoneSW && [zoneSW window] == clickedWindow) {
+            [frame setBottomBorderClicked:YES];
+            [frame setLeftBorderClicked:YES];
+            handledResizeZone = YES;
+        }
+
+        // N edge
+        XCBWindow *zoneN = [frame childWindowForKey:ResizeZoneN];
+        if (!handledResizeZone && zoneN && [zoneN window] == clickedWindow) {
+            [frame setTopBorderClicked:YES];
+            handledResizeZone = YES;
+        }
+
+        // S edge
+        XCBWindow *zoneS = [frame childWindowForKey:ResizeZoneS];
+        if (!handledResizeZone && zoneS && [zoneS window] == clickedWindow) {
+            [frame setBottomBorderClicked:YES];
+            handledResizeZone = YES;
+        }
+
+        // E edge
+        XCBWindow *zoneE = [frame childWindowForKey:ResizeZoneE];
+        if (!handledResizeZone && zoneE && [zoneE window] == clickedWindow) {
+            [frame setRightBorderClicked:YES];
+            handledResizeZone = YES;
+        }
+
+        // W edge
+        XCBWindow *zoneW = [frame childWindowForKey:ResizeZoneW];
+        if (!handledResizeZone && zoneW && [zoneW window] == clickedWindow) {
+            [frame setLeftBorderClicked:YES];
+            handledResizeZone = YES;
+        }
+
+        // Grow box zone (overlays SE corner with larger size)
+        XCBWindow *zoneGrowBox = [frame childWindowForKey:ResizeZoneGrowBox];
+        if (!handledResizeZone && zoneGrowBox && [zoneGrowBox window] == clickedWindow) {
+            [frame setBottomBorderClicked:YES];
+            [frame setRightBorderClicked:YES];
+            handledResizeZone = YES;
+        }
+
+        if (handledResizeZone) {
+            if ([frame grabPointer]) {
                 resizeState = YES;
                 dragState = NO;
-                [frame setBottomBorderClicked:YES];
-                [frame setRightBorderClicked:YES];
-                NSLog(@"Resize handle clicked - starting corner resize");
             }
         } else {
-            // Check border clicks
+            // Check border clicks (fallback for clicking on frame borders directly)
             [self borderClickedForFrameWindow:frame withEvent:anEvent];
         }
     }
@@ -1814,6 +1889,7 @@ static XCBConnection *sharedInstance;
             {
                 frame = (XCBFrame *) [window parentWindow];
                 [frame stackAbove];
+                [frame raiseResizeHandle];
                 titleBar = (XCBTitleBar *) [frame childWindowForKey:TitleBar]; //TODO: Can i put all this in a single method?
                 [titleBar drawTitleBarComponents];
                 [self drawAllTitleBarsExcept:titleBar];
@@ -1940,6 +2016,7 @@ static XCBConnection *sharedInstance;
         }
 
         [frame stackAbove];
+        [frame raiseResizeHandle];
         [clientWindow focus];
         [self drawAllTitleBarsExcept:titleBar];
 
@@ -1974,6 +2051,37 @@ static XCBConnection *sharedInstance;
             // Mouse entered the resize handle - show resize cursor
             [frameWindow showResizeCursorForPosition:BottomRightCorner];
         }
+
+        // Theme-driven resize zones
+        XCBWindow *zoneN = [frameWindow childWindowForKey:ResizeZoneN];
+        XCBWindow *zoneS = [frameWindow childWindowForKey:ResizeZoneS];
+        XCBWindow *zoneE = [frameWindow childWindowForKey:ResizeZoneE];
+        XCBWindow *zoneW = [frameWindow childWindowForKey:ResizeZoneW];
+        XCBWindow *zoneNE = [frameWindow childWindowForKey:ResizeZoneNE];
+        XCBWindow *zoneNW = [frameWindow childWindowForKey:ResizeZoneNW];
+        XCBWindow *zoneSE = [frameWindow childWindowForKey:ResizeZoneSE];
+        XCBWindow *zoneSW = [frameWindow childWindowForKey:ResizeZoneSW];
+        XCBWindow *zoneGrowBox = [frameWindow childWindowForKey:ResizeZoneGrowBox];
+
+        if (zoneN && [zoneN window] == anEvent->event)
+            [frameWindow showResizeCursorForPosition:TopBorder];
+        else if (zoneS && [zoneS window] == anEvent->event)
+            [frameWindow showResizeCursorForPosition:BottomBorder];
+        else if (zoneE && [zoneE window] == anEvent->event)
+            [frameWindow showResizeCursorForPosition:RightBorder];
+        else if (zoneW && [zoneW window] == anEvent->event)
+            [frameWindow showResizeCursorForPosition:LeftBorder];
+        else if (zoneNE && [zoneNE window] == anEvent->event)
+            [frameWindow showResizeCursorForPosition:TopRightCorner];
+        else if (zoneNW && [zoneNW window] == anEvent->event)
+            [frameWindow showResizeCursorForPosition:TopLeftCorner];
+        else if (zoneSE && [zoneSE window] == anEvent->event)
+            [frameWindow showResizeCursorForPosition:BottomRightCorner];
+        else if (zoneSW && [zoneSW window] == anEvent->event)
+            [frameWindow showResizeCursorForPosition:BottomLeftCorner];
+        else if (zoneGrowBox && [zoneGrowBox window] == anEvent->event)
+            [frameWindow showResizeCursorForPosition:BottomRightCorner];
+
         frameWindow = nil;
         resizeHandle = nil;
     }
@@ -2020,7 +2128,7 @@ static XCBConnection *sharedInstance;
 - (void)handleLeaveNotify:(xcb_leave_notify_event_t *)anEvent
 {
     XCBWindow *window = [self windowForXCBId:anEvent->event];
-    
+
     if ([window isKindOfClass:[XCBWindow class]] &&
         [[window parentWindow] isKindOfClass:[XCBFrame class]])
     {
@@ -2031,10 +2139,35 @@ static XCBConnection *sharedInstance;
             // Mouse left the resize handle - show normal pointer cursor
             [frameWindow showLeftPointerCursor];
         }
+
+        // Theme-driven resize zones - restore cursor when leaving
+        XCBWindow *zoneN = [frameWindow childWindowForKey:ResizeZoneN];
+        XCBWindow *zoneS = [frameWindow childWindowForKey:ResizeZoneS];
+        XCBWindow *zoneE = [frameWindow childWindowForKey:ResizeZoneE];
+        XCBWindow *zoneW = [frameWindow childWindowForKey:ResizeZoneW];
+        XCBWindow *zoneNE = [frameWindow childWindowForKey:ResizeZoneNE];
+        XCBWindow *zoneNW = [frameWindow childWindowForKey:ResizeZoneNW];
+        XCBWindow *zoneSE = [frameWindow childWindowForKey:ResizeZoneSE];
+        XCBWindow *zoneSW = [frameWindow childWindowForKey:ResizeZoneSW];
+        XCBWindow *zoneGrowBox = [frameWindow childWindowForKey:ResizeZoneGrowBox];
+
+        if ((zoneN && [zoneN window] == anEvent->event) ||
+            (zoneS && [zoneS window] == anEvent->event) ||
+            (zoneE && [zoneE window] == anEvent->event) ||
+            (zoneW && [zoneW window] == anEvent->event) ||
+            (zoneNE && [zoneNE window] == anEvent->event) ||
+            (zoneNW && [zoneNW window] == anEvent->event) ||
+            (zoneSE && [zoneSE window] == anEvent->event) ||
+            (zoneSW && [zoneSW window] == anEvent->event) ||
+            (zoneGrowBox && [zoneGrowBox window] == anEvent->event))
+        {
+            [frameWindow showLeftPointerCursor];
+        }
+
         frameWindow = nil;
         resizeHandle = nil;
     }
-    
+
     window = nil;
 }
 
