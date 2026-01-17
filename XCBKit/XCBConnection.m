@@ -1575,7 +1575,6 @@ static XCBConnection *sharedInstance;
             [frame setBottomBorderClicked:YES];
             [frame setRightBorderClicked:YES];
             handledResizeZone = YES;
-            NSLog(@"Legacy resize handle clicked - SE corner");
         }
 
         // Check theme-driven resize zones
@@ -1585,7 +1584,6 @@ static XCBConnection *sharedInstance;
             [frame setBottomBorderClicked:YES];
             [frame setRightBorderClicked:YES];
             handledResizeZone = YES;
-            NSLog(@"ResizeZoneSE clicked - SE corner");
         }
 
         // NW corner
@@ -1594,7 +1592,6 @@ static XCBConnection *sharedInstance;
             [frame setTopBorderClicked:YES];
             [frame setLeftBorderClicked:YES];
             handledResizeZone = YES;
-            NSLog(@"ResizeZoneNW clicked - NW corner");
         }
 
         // NE corner
@@ -1603,7 +1600,6 @@ static XCBConnection *sharedInstance;
             [frame setTopBorderClicked:YES];
             [frame setRightBorderClicked:YES];
             handledResizeZone = YES;
-            NSLog(@"ResizeZoneNE clicked - NE corner");
         }
 
         // SW corner
@@ -1612,7 +1608,6 @@ static XCBConnection *sharedInstance;
             [frame setBottomBorderClicked:YES];
             [frame setLeftBorderClicked:YES];
             handledResizeZone = YES;
-            NSLog(@"ResizeZoneSW clicked - SW corner");
         }
 
         // N edge
@@ -1620,7 +1615,6 @@ static XCBConnection *sharedInstance;
         if (!handledResizeZone && zoneN && [zoneN window] == clickedWindow) {
             [frame setTopBorderClicked:YES];
             handledResizeZone = YES;
-            NSLog(@"ResizeZoneN clicked - N edge");
         }
 
         // S edge
@@ -1628,7 +1622,6 @@ static XCBConnection *sharedInstance;
         if (!handledResizeZone && zoneS && [zoneS window] == clickedWindow) {
             [frame setBottomBorderClicked:YES];
             handledResizeZone = YES;
-            NSLog(@"ResizeZoneS clicked - S edge");
         }
 
         // E edge
@@ -1636,7 +1629,6 @@ static XCBConnection *sharedInstance;
         if (!handledResizeZone && zoneE && [zoneE window] == clickedWindow) {
             [frame setRightBorderClicked:YES];
             handledResizeZone = YES;
-            NSLog(@"ResizeZoneE clicked - E edge");
         }
 
         // W edge
@@ -1644,13 +1636,18 @@ static XCBConnection *sharedInstance;
         if (!handledResizeZone && zoneW && [zoneW window] == clickedWindow) {
             [frame setLeftBorderClicked:YES];
             handledResizeZone = YES;
-            NSLog(@"ResizeZoneW clicked - W edge");
+        }
+
+        // Grow box zone (overlays SE corner with larger size)
+        XCBWindow *zoneGrowBox = [frame childWindowForKey:ResizeZoneGrowBox];
+        if (!handledResizeZone && zoneGrowBox && [zoneGrowBox window] == clickedWindow) {
+            [frame setBottomBorderClicked:YES];
+            [frame setRightBorderClicked:YES];
+            handledResizeZone = YES;
         }
 
         if (handledResizeZone) {
-            if (![frame grabPointer]) {
-                NSLog(@"Unable to grab the pointer for resize zone");
-            } else {
+            if ([frame grabPointer]) {
                 resizeState = YES;
                 dragState = NO;
             }

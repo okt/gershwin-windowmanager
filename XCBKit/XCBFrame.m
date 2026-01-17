@@ -21,6 +21,9 @@
 - (CGFloat)resizeZoneEdgeThickness;
 - (BOOL)resizeZoneEnabled:(NSInteger)direction;
 - (BOOL)themeRendersResizeVisual;
+// Grow box zone (optional overlay in bottom-right)
+- (BOOL)resizeZoneHasGrowBox;
+- (CGFloat)resizeZoneGrowBoxSize;
 @end
 
 
@@ -306,9 +309,6 @@
     [resizeHandle stackAbove];
 
     [connection flush];
-
-    NSLog(@"Created resize handle for frame %u at position (%d, %d) with size %u (scrollbar width)",
-          window, handleX, handleY, handleSize);
 }
 
 /*** performance while resizing pixel by pixel is critical so we do everything we can to improve it also if the message signature looks bad ***/
@@ -412,7 +412,8 @@
 
     // Raise all theme-driven resize zones
     childrenMask zones[] = {ResizeZoneNW, ResizeZoneN, ResizeZoneNE, ResizeZoneE,
-                           ResizeZoneSE, ResizeZoneS, ResizeZoneSW, ResizeZoneW};
+                           ResizeZoneSE, ResizeZoneS, ResizeZoneSW, ResizeZoneW,
+                           ResizeZoneGrowBox};
     for (int i = 0; i < sizeof(zones)/sizeof(zones[0]); i++) {
         XCBWindow *zone = [self childWindowForKey:zones[i]];
         if (zone) {
@@ -429,17 +430,12 @@
     // This allows themes to implement resize zones without requiring libs-gui changes
     GSTheme *theme = [GSTheme theme];
 
-    NSLog(@"createResizeZonesFromTheme: theme=%@ class=%@", theme, [theme class]);
-
     // Check if theme supports the resize zone protocol
     if (![theme respondsToSelector:@selector(resizeZoneCornerSize)]) {
         // Theme doesn't support resize zones - fall back to legacy single resize handle
-        NSLog(@"Theme does NOT support resize zone protocol - falling back to legacy resize handle");
         [self createResizeHandle];
         return;
     }
-
-    NSLog(@"Theme SUPPORTS resize zone protocol!");
 
     // Get resize zone dimensions from theme
     CGFloat cornerSize = [theme resizeZoneCornerSize];
@@ -496,7 +492,18 @@
                      position:RightBorder
                           key:ResizeZoneE];
 
-    NSLog(@"Created theme-driven resize zones: cornerSize=%.1f, edgeThickness=%.1f", cornerSize, edgeThickness);
+    // Optionally create grow box zone (overlays SE corner with larger size)
+    if ([theme respondsToSelector:@selector(resizeZoneHasGrowBox)] &&
+        [theme resizeZoneHasGrowBox]) {
+        CGFloat growBoxSize = cornerSize; // Default to corner size
+        if ([theme respondsToSelector:@selector(resizeZoneGrowBoxSize)]) {
+            growBoxSize = [theme resizeZoneGrowBoxSize];
+        }
+        [self createResizeZoneAtX:w - growBoxSize y:h - growBoxSize
+                            width:growBoxSize height:growBoxSize
+                         position:BottomRightCorner
+                              key:ResizeZoneGrowBox];
+    }
 }
 
 - (void)createResizeZoneAtX:(CGFloat)x y:(CGFloat)y
@@ -511,30 +518,26 @@
 
     xcb_window_t zoneWindow = xcb_generate_id([connection connection]);
 
-    // DEBUG: Use INPUT_OUTPUT with pink background to visualize resize zones
-    // Change to INPUT_ONLY and remove XCB_CW_BACK_PIXEL for production
-    uint32_t mask = XCB_CW_BACK_PIXEL | XCB_CW_EVENT_MASK | XCB_CW_CURSOR;
-    uint32_t values[3];
+    // Invisible INPUT_ONLY window - captures mouse events only
+    uint32_t mask = XCB_CW_EVENT_MASK | XCB_CW_CURSOR;
+    uint32_t values[2];
 
     // Get appropriate resize cursor for this position
     xcb_cursor_t resizeCursor = [[self cursor] selectResizeCursorForPosition:position];
 
-    // Pink color for debugging (0xFFB6C1 = light pink in RGB)
-    values[0] = 0x00FF69B4;  // Hot pink
-    values[1] = XCB_EVENT_MASK_BUTTON_PRESS | XCB_EVENT_MASK_BUTTON_RELEASE |
+    values[0] = XCB_EVENT_MASK_BUTTON_PRESS | XCB_EVENT_MASK_BUTTON_RELEASE |
                 XCB_EVENT_MASK_POINTER_MOTION | XCB_EVENT_MASK_ENTER_WINDOW | XCB_EVENT_MASK_LEAVE_WINDOW;
-    values[2] = resizeCursor;
+    values[1] = resizeCursor;
 
-    XCBScreen *scr = [parentWindow screen];
     xcb_create_window([connection connection],
-                      [scr screen]->root_depth,  // Need depth for visible window
+                      XCB_COPY_FROM_PARENT,
                       zoneWindow,
                       window, // Parent is the frame
                       (int16_t)x, (int16_t)y,
                       (uint16_t)width, (uint16_t)height,
                       0, // no border
-                      XCB_WINDOW_CLASS_INPUT_OUTPUT,  // DEBUG: visible window
-                      [scr screen]->root_visual,
+                      XCB_WINDOW_CLASS_INPUT_ONLY,
+                      XCB_COPY_FROM_PARENT,
                       mask,
                       values);
 
@@ -584,6 +587,16 @@
     [self updateResizeZone:ResizeZoneS toX:cornerSize y:h - edgeThickness width:w - 2*cornerSize height:edgeThickness];
     [self updateResizeZone:ResizeZoneW toX:0 y:cornerSize width:edgeThickness height:h - 2*cornerSize];
     [self updateResizeZone:ResizeZoneE toX:w - edgeThickness y:cornerSize width:edgeThickness height:h - 2*cornerSize];
+
+    // Update grow box zone if present
+    if ([theme respondsToSelector:@selector(resizeZoneHasGrowBox)] &&
+        [theme resizeZoneHasGrowBox]) {
+        CGFloat growBoxSize = cornerSize;
+        if ([theme respondsToSelector:@selector(resizeZoneGrowBoxSize)]) {
+            growBoxSize = [theme resizeZoneGrowBoxSize];
+        }
+        [self updateResizeZone:ResizeZoneGrowBox toX:w - growBoxSize y:h - growBoxSize width:growBoxSize height:growBoxSize];
+    }
 }
 
 - (void)updateResizeZone:(childrenMask)key toX:(CGFloat)x y:(CGFloat)y width:(CGFloat)width height:(CGFloat)height
@@ -605,7 +618,7 @@
     // Destroy all resize zone windows
     childrenMask zones[] = {ResizeZoneNW, ResizeZoneN, ResizeZoneNE, ResizeZoneE,
                            ResizeZoneSE, ResizeZoneS, ResizeZoneSW, ResizeZoneW,
-                           ResizeHandle}; // Also handle legacy
+                           ResizeZoneGrowBox, ResizeHandle}; // Also handle legacy
 
     for (int i = 0; i < sizeof(zones)/sizeof(zones[0]); i++) {
         XCBWindow *zone = [self childWindowForKey:zones[i]];

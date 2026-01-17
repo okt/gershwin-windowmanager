@@ -28,7 +28,8 @@ typedef NS_ENUM(NSInteger, childrenMask)
     ResizeZoneSE = 14,
     ResizeZoneS = 15,
     ResizeZoneSW = 16,
-    ResizeZoneW = 17
+    ResizeZoneW = 17,
+    ResizeZoneGrowBox = 18  // Theme-defined grow box overlay
 };
 
 @interface XCBFrame : XCBWindow
