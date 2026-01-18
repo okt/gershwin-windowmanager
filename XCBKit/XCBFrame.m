@@ -685,7 +685,22 @@ void resizeFromRightForEvent(xcb_motion_notify_event_t *anEvent,
     XCBRect titleBarRect = [titleBar windowRect];
     XCBRect clientRect = [clientWindow windowRect];
 
-    uint32_t values[] = {anEvent->event_x};
+    // Apply minimum visibility constraint when shrinking
+    const int32_t MIN_VISIBLE_PIXELS = 16;
+    XCBConnection *xcbConn = [frame connection];
+    int32_t newWidth = anEvent->event_x;
+
+    if ([xcbConn workareaValid]) {
+        int32_t workareaX = [xcbConn cachedWorkareaX];
+        // Ensure at least MIN_VISIBLE_PIXELS of right edge stays on screen
+        // rightEdge = frameX + newWidth, must be >= workareaX + MIN_VISIBLE_PIXELS
+        int32_t minWidth = workareaX + MIN_VISIBLE_PIXELS - frameRect.position.x;
+        if (minWidth > minW) {
+            minW = minWidth;
+        }
+    }
+
+    uint32_t values[] = {newWidth};
 
     if (frameRect.size.width <= minW && anEvent->event_x < minW)
     {
@@ -752,8 +767,30 @@ void resizeFromLeftForEvent(xcb_motion_notify_event_t *anEvent,
     XCBRect titleBarRect = [titleBar windowRect];
     XCBRect clientRect = [clientWindow windowRect];
 
-    int xDelta = rect.position.x - anEvent->root_x;
-    uint32_t values[] = {anEvent->root_x, xDelta + rect.size.width};
+    // Apply minimum visibility constraint
+    const int32_t MIN_VISIBLE_PIXELS = 16;
+    XCBConnection *xcbConn = [frame connection];
+    int16_t newX = anEvent->root_x;
+
+    if ([xcbConn workareaValid]) {
+        int32_t workareaX = [xcbConn cachedWorkareaX];
+        int32_t workareaWidth = [xcbConn cachedWorkareaWidth];
+        int32_t newWidth = rect.position.x - newX + rect.size.width;
+
+        // Ensure at least MIN_VISIBLE_PIXELS of right edge stays on screen
+        int32_t minX = workareaX + MIN_VISIBLE_PIXELS - newWidth;
+        if (newX < minX) {
+            newX = minX;
+        }
+        // Ensure at least MIN_VISIBLE_PIXELS of left edge stays on screen
+        int32_t maxX = workareaX + workareaWidth - MIN_VISIBLE_PIXELS;
+        if (newX > maxX) {
+            newX = maxX;
+        }
+    }
+
+    int xDelta = rect.position.x - newX;
+    uint32_t values[] = {newX, xDelta + rect.size.width};
 
     if (rect.size.width <= minW && anEvent->root_x > rect.position.x)
     {
@@ -839,6 +876,20 @@ void resizeFromBottomForEvent(xcb_motion_notify_event_t *anEvent,
     XCBRect rect = [frame windowRect];
     XCBRect clientRect = [clientWindow windowRect];
 
+    // Apply minimum visibility constraint when shrinking
+    const int32_t MIN_VISIBLE_PIXELS = 16;
+    XCBConnection *xcbConn = [frame connection];
+
+    if ([xcbConn workareaValid]) {
+        int32_t workareaY = [xcbConn cachedWorkareaY];
+        // Ensure at least MIN_VISIBLE_PIXELS of bottom edge stays on screen
+        // bottomEdge = frameY + newHeight, must be >= workareaY + MIN_VISIBLE_PIXELS
+        int32_t minHeight = workareaY + MIN_VISIBLE_PIXELS - rect.position.y;
+        if (minHeight > minH + titleBarHeight) {
+            minH = minHeight - titleBarHeight;
+        }
+    }
+
     uint32_t values[] = {anEvent->event_y};
 
     if (rect.size.height <= minH + titleBarHeight && anEvent->event_y < minH)
@@ -896,9 +947,29 @@ void resizeFromTopForEvent(xcb_motion_notify_event_t *anEvent,
     XCBRect titleBarRect = [titleBar windowRect];
     XCBRect clientRect = [clientWindow windowRect];
 
-    int yDelta = rect.position.y - anEvent->root_y;
+    // Apply minimum visibility constraint
+    const int32_t MIN_VISIBLE_PIXELS = 16;
+    XCBConnection *xcbConn = [frame connection];
+    int16_t newY = anEvent->root_y;
 
-    uint32_t values[] = {anEvent->root_y, yDelta + rect.size.height};
+    if ([xcbConn workareaValid]) {
+        int32_t workareaY = [xcbConn cachedWorkareaY];
+        int32_t workareaHeight = [xcbConn cachedWorkareaHeight];
+
+        // Don't allow titlebar to go above workarea top
+        if (newY < workareaY) {
+            newY = workareaY;
+        }
+        // Ensure at least MIN_VISIBLE_PIXELS of top stays on screen
+        int32_t maxY = workareaY + workareaHeight - MIN_VISIBLE_PIXELS;
+        if (newY > maxY) {
+            newY = maxY;
+        }
+    }
+
+    int yDelta = rect.position.y - newY;
+
+    uint32_t values[] = {newY, yDelta + rect.size.height};
 
     if (rect.size.height <= minH + titleBarHeight && anEvent->root_y > rect.position.y)
     {
