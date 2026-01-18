@@ -64,6 +64,7 @@ typedef NS_ENUM(NSInteger, childrenMask)
 - (void) createResizeHandle;
 - (void) updateResizeHandlePosition;
 - (void) raiseResizeHandle;
+- (void) applyRoundedCornersShapeMask;
 
 // Theme-driven resize zones
 - (void) createResizeZonesFromTheme;

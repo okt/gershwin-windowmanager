@@ -36,6 +36,8 @@
 - (BOOL) checkSupported;
 - (void) createPixmapsAndGCs;
 - (void) createArcsWithRadius:(int)aRadius;
+- (void) createTopArcsWithRadius:(int)aRadius;
+- (void) createRoundedCornersWithTopRadius:(int)topRadius bottomRadius:(int)bottomRadius;
 - (void) calculateDimensionsFromGeometries:(XCBGeometryReply*)aGeometryReply;
 
 @end
