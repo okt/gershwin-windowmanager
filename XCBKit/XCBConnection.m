@@ -1082,11 +1082,52 @@ static XCBConnection *sharedInstance;
     TitleBarSettingsService *settings = [TitleBarSettingsService sharedInstance];
     uint16_t titleHeight = [settings heightDefined] ? [settings height] : [settings defaultHeight];
 
+    // Menubar safe zone: prevent windows from being created in the top-left 48px
+    // This keeps the menubar area clear. Fullscreen windows are exempt.
+    const int16_t MENUBAR_SAFE_ZONE = 48;
+    int16_t initialX = [window windowRect].position.x;
+    int16_t initialY = [window windowRect].position.y;
+
+    // Check if window is requesting fullscreen state
+    BOOL isFullscreen = NO;
+    void *stateReply = [ewmhService getProperty:[ewmhService EWMHWMState]
+                                   propertyType:XCB_ATOM_ATOM
+                                      forWindow:window
+                                         delete:NO
+                                         length:UINT32_MAX];
+    if (stateReply) {
+        xcb_get_property_reply_t *reply = (xcb_get_property_reply_t *)stateReply;
+        int numAtoms = xcb_get_property_value_length(reply) / sizeof(xcb_atom_t);
+        xcb_atom_t *atoms = (xcb_atom_t *)xcb_get_property_value(reply);
+        xcb_atom_t fullscreenAtom = [[ewmhService atomService] atomFromCachedAtomsWithKey:[ewmhService EWMHWMStateFullscreen]];
+        for (int i = 0; i < numAtoms; i++) {
+            if (atoms[i] == fullscreenAtom) {
+                isFullscreen = YES;
+                break;
+            }
+        }
+        free(stateReply);
+    }
+
+    // Apply safe zone constraint (unless fullscreen)
+    if (!isFullscreen) {
+        if (initialX < MENUBAR_SAFE_ZONE) {
+            initialX = MENUBAR_SAFE_ZONE;
+            NSLog(@"[MapRequest] Adjusted window X from %d to %d (menubar safe zone)",
+                  [window windowRect].position.x, initialX);
+        }
+        if (initialY < MENUBAR_SAFE_ZONE) {
+            initialY = MENUBAR_SAFE_ZONE;
+            NSLog(@"[MapRequest] Adjusted window Y from %d to %d (menubar safe zone)",
+                  [window windowRect].position.y, initialY);
+        }
+    }
+
     XCBCreateWindowTypeRequest *request = [[XCBCreateWindowTypeRequest alloc] initForWindowType:XCBFrameRequest];
     [request setDepth:[screen screen]->root_depth];
     [request setParentWindow:[screen rootWindow]];
-    [request setXPosition:[window windowRect].position.x];
-    [request setYPosition:[window windowRect].position.y];
+    [request setXPosition:initialX];
+    [request setYPosition:initialY];
     [request setWidth:[window windowRect].size.width];
     [request setHeight:[window windowRect].size.height + titleHeight];
     [request setBorderWidth:0];
