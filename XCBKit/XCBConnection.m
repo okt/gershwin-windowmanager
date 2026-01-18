@@ -1273,29 +1273,33 @@ static XCBConnection *sharedInstance;
         
         // Use cached workarea for performance (no X server round-trip)
         if (self.workareaValid) {
-            // Get frame dimensions to ensure entire window stays within workarea
+            // Minimum pixels of window that must remain visible on each edge
+            // This prevents windows from being "lost" off screen
+            const int32_t MIN_VISIBLE_PIXELS = 16;
+
+            // Get frame dimensions
             XCBRect frameRect = [frame windowRect];
             uint32_t frameWidth = frameRect.size.width;
-            uint32_t frameHeight = frameRect.size.height;
-            
-            // Constrain frame X position: don't allow window to go left of workarea left edge
-            if (frameX < _cachedWorkareaX) {
-                frameX = _cachedWorkareaX;
-            }
-            
+
             // Constrain frame Y position: don't allow titlebar to go above workarea top
             if (frameY < _cachedWorkareaY) {
                 frameY = _cachedWorkareaY;
             }
-            
-            // Constrain right edge: don't allow window to extend beyond workarea right edge
-            int32_t maxFrameX = _cachedWorkareaX + (int32_t)_cachedWorkareaWidth - (int32_t)frameWidth;
+
+            // Constrain left edge: at least MIN_VISIBLE_PIXELS must remain on screen
+            int32_t minFrameX = _cachedWorkareaX + MIN_VISIBLE_PIXELS - (int32_t)frameWidth;
+            if (frameX < minFrameX) {
+                frameX = minFrameX;
+            }
+
+            // Constrain right edge: at least MIN_VISIBLE_PIXELS must remain on screen
+            int32_t maxFrameX = _cachedWorkareaX + (int32_t)_cachedWorkareaWidth - MIN_VISIBLE_PIXELS;
             if (frameX > maxFrameX) {
                 frameX = maxFrameX;
             }
-            
-            // Constrain bottom edge: don't allow window to extend beyond workarea bottom edge
-            int32_t maxFrameY = _cachedWorkareaY + (int32_t)_cachedWorkareaHeight - (int32_t)frameHeight;
+
+            // Constrain bottom edge: at least MIN_VISIBLE_PIXELS must remain on screen
+            int32_t maxFrameY = _cachedWorkareaY + (int32_t)_cachedWorkareaHeight - MIN_VISIBLE_PIXELS;
             if (frameY > maxFrameY) {
                 frameY = maxFrameY;
             }
