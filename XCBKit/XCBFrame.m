@@ -11,6 +11,7 @@
 #import "services/ICCCMService.h"
 #import "services/TitleBarSettingsService.h"
 #import "utils/CairoDrawer.h"
+#import "utils/XCBShape.h"
 #import <AppKit/NSScroller.h>
 #import <GNUstepGUI/GSTheme.h>
 
@@ -24,6 +25,10 @@
 // Grow box zone (optional overlay in bottom-right)
 - (BOOL)resizeZoneHasGrowBox;
 - (CGFloat)resizeZoneGrowBoxSize;
+// Titlebar corner radius for rounded top corners (0 = square corners)
+- (CGFloat)titlebarCornerRadius;
+// Window bottom corner radius for rounded bottom corners (0 = square corners)
+- (CGFloat)windowBottomCornerRadius;
 @end
 
 
@@ -247,6 +252,9 @@
     if ([clientWindow canResize] && [clientWindow decorated]) {
         [self createResizeZonesFromTheme];
     }
+
+    // Apply rounded top corners shape mask
+    [self applyRoundedCornersShapeMask];
 
     titleBar = nil;
     clientWindow = nil;
@@ -634,6 +642,32 @@
             xcb_destroy_window([connection connection], [zone window]);
             [connection unregisterWindow:zone];
             [self removeChild:zones[i]];
+        }
+    }
+}
+
+- (void)applyRoundedCornersShapeMask
+{
+    // Query theme for corner radii - default to 0 (square corners) if not provided
+    GSTheme *theme = [GSTheme theme];
+    CGFloat topRadius = 0;
+    CGFloat bottomRadius = 0;
+
+    if ([theme respondsToSelector:@selector(titlebarCornerRadius)]) {
+        topRadius = [theme titlebarCornerRadius];
+    }
+
+    if ([theme respondsToSelector:@selector(windowBottomCornerRadius)]) {
+        bottomRadius = [theme windowBottomCornerRadius];
+    }
+
+    if (topRadius > 0 || bottomRadius > 0) {
+        XCBShape *shape = [[XCBShape alloc] initWithConnection:connection withWinId:window];
+        if ([shape checkSupported]) {
+            XCBGeometryReply *geometry = [self geometries];
+            [shape calculateDimensionsFromGeometries:geometry];
+            [shape createPixmapsAndGCs];
+            [shape createRoundedCornersWithTopRadius:(int)topRadius bottomRadius:(int)bottomRadius];
         }
     }
 }
