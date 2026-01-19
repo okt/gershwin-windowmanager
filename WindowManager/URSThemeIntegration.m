@@ -56,87 +56,29 @@ static NSMutableSet *fixedSizeWindows = nil;
     }
 }
 
-// Method to draw authentic Eau button balls using the exact gradient logic from EauWindowButtonCell
+// Method to draw clean flat Eau button (replaces old 3D orb style)
 + (void)drawEauButtonBall:(NSRect)frame withColor:(NSColor*)baseColor {
-    // Replicate EauWindowButtonCell drawBallWithRect logic exactly
-    frame = NSInsetRect(frame, 0.5, 0.5);
-    NSColor *bc = baseColor;
-    float luminosity = 0.5;
+    // Clean flat button with inset gradient effect
+    NSRect circleRect = NSInsetRect(frame, 0.5, 0.5);
 
-    NSColor *gradientDownColor1 = [bc highlightWithLevel: luminosity];
-    NSColor *gradientDownColor2 = [bc colorWithAlphaComponent: 0];
-    NSColor *shadowColor1 = [bc shadowWithLevel: 0.4];
-    NSColor *shadowColor2 = [bc shadowWithLevel: 0.6];
-    NSColor *gradientStrokeColor2 = [shadowColor1 highlightWithLevel: luminosity];
-    NSColor *gradientUpColor1 = [bc highlightWithLevel: luminosity+0.2];
-    NSColor *gradientUpColor2 = [gradientUpColor1 colorWithAlphaComponent: 0.5];
-    NSColor *gradientUpColor3 = [gradientUpColor1 colorWithAlphaComponent: 0];
-    NSColor *light1 = [NSColor whiteColor];
-    NSColor *light2 = [light1 colorWithAlphaComponent:0];
+    // Determine border color (darker than fill)
+    NSColor *borderColor = [baseColor shadowWithLevel:0.25];
 
-    // Gradient Declarations
-    NSGradient *gradientUp = [[NSGradient alloc] initWithColorsAndLocations:
-        gradientUpColor1, 0.1,
-        gradientUpColor2, 0.3,
-        gradientUpColor3, 1.0, nil];
-    NSGradient *gradientDown = [[NSGradient alloc] initWithColorsAndLocations:
-        gradientDownColor1, 0.0,
-        gradientDownColor2, 1.0, nil];
-    NSGradient *baseGradient = [[NSGradient alloc] initWithColorsAndLocations:
-        bc, 0.0,
-        shadowColor1, 0.80, nil];
-    NSGradient *gradientStroke = [[NSGradient alloc] initWithColorsAndLocations:
-        light1, 0.2,
-        light2, 1.0, nil];
-    NSGradient *gradientStroke2 = [[NSGradient alloc] initWithColorsAndLocations:
-        shadowColor2, 0.47,
-        gradientStrokeColor2, 1.0, nil];
+    // Create inset gradient (dark top, light bottom for subtle inset effect)
+    NSColor *gradientTop = [baseColor shadowWithLevel:0.15];
+    NSColor *gradientBottom = [baseColor highlightWithLevel:0.1];
+    NSGradient *insetGradient = [[NSGradient alloc]
+        initWithStartingColor:gradientTop endingColor:gradientBottom];
 
-    // Drawing code from EauWindowButtonCell
-    NSRect baseCircleGradientStrokeRect = frame;
-    NSRect baseCircleGradientStrokeRect2 = NSInsetRect(baseCircleGradientStrokeRect, 0.5, 0.5);
-    frame = NSInsetRect(frame, 1, 1);
+    // Draw filled circle with gradient
+    NSBezierPath *circlePath = [NSBezierPath bezierPathWithOvalInRect:circleRect];
+    [insetGradient drawInBezierPath:circlePath angle:90];
+    // ARC handles memory management
 
-    NSRect baseCircleRect = NSMakeRect(NSMinX(frame) + floor(NSWidth(frame) * 0.06667 + 0.5), NSMinY(frame) + floor(NSHeight(frame) * 0.06667 + 0.5), floor(NSWidth(frame) * 0.93333 + 0.5) - floor(NSWidth(frame) * 0.06667 + 0.5), floor(NSHeight(frame) * 0.93333 + 0.5) - floor(NSHeight(frame) * 0.06667 + 0.5));
-    NSRect basecircle2Rect = NSMakeRect(NSMinX(frame) + floor(NSWidth(frame) * 0.06667 + 0.5), NSMinY(frame) + floor(NSHeight(frame) * 0.06667 + 0.5), floor(NSWidth(frame) * 0.93333 + 0.5) - floor(NSWidth(frame) * 0.06667 + 0.5), floor(NSHeight(frame) * 0.93333 + 0.5) - floor(NSHeight(frame) * 0.06667 + 0.5));
-
-    // BaseCircleGradientStroke Drawing
-    NSBezierPath *baseCircleGradientStrokePath = [NSBezierPath bezierPathWithOvalInRect: baseCircleGradientStrokeRect];
-    [gradientStroke drawInBezierPath: baseCircleGradientStrokePath angle: 90];
-    NSBezierPath *baseCircleGradientStrokePath2 = [NSBezierPath bezierPathWithOvalInRect: baseCircleGradientStrokeRect2];
-    [gradientStroke2 drawInBezierPath: baseCircleGradientStrokePath2 angle: -90];
-
-    // BaseCircle Drawing
-    NSBezierPath *baseCirclePath = [NSBezierPath bezierPathWithOvalInRect: baseCircleRect];
-    CGFloat baseCircleResizeRatio = MIN(NSWidth(baseCircleRect) / 13, NSHeight(baseCircleRect) / 13);
-    [NSGraphicsContext saveGraphicsState];
-    [baseCirclePath addClip];
-    [baseGradient drawFromCenter: NSMakePoint(NSMidX(baseCircleRect) + 0 * baseCircleResizeRatio, NSMidY(baseCircleRect) + 0 * baseCircleResizeRatio) radius: 2.85 * baseCircleResizeRatio
-        toCenter: NSMakePoint(NSMidX(baseCircleRect) + 0 * baseCircleResizeRatio, NSMidY(baseCircleRect) + 0 * baseCircleResizeRatio) radius: 7.32 * baseCircleResizeRatio
-        options: NSGradientDrawsBeforeStartingLocation | NSGradientDrawsAfterEndingLocation];
-    [NSGraphicsContext restoreGraphicsState];
-
-    // basecircle2 Drawing
-    NSBezierPath *basecircle2Path = [NSBezierPath bezierPathWithOvalInRect: basecircle2Rect];
-    CGFloat basecircle2ResizeRatio = MIN(NSWidth(basecircle2Rect) / 13, NSHeight(basecircle2Rect) / 13);
-    [NSGraphicsContext saveGraphicsState];
-    [basecircle2Path addClip];
-    [gradientDown drawFromCenter: NSMakePoint(NSMidX(basecircle2Rect) + -0.98 * basecircle2ResizeRatio, NSMidY(basecircle2Rect) + -6.5 * basecircle2ResizeRatio) radius: 1.54 * basecircle2ResizeRatio
-        toCenter: NSMakePoint(NSMidX(basecircle2Rect) + -1.86 * basecircle2ResizeRatio, NSMidY(basecircle2Rect) + -8.73 * basecircle2ResizeRatio) radius: 8.65 * basecircle2ResizeRatio
-        options: NSGradientDrawsBeforeStartingLocation | NSGradientDrawsAfterEndingLocation];
-    [NSGraphicsContext restoreGraphicsState];
-
-    // halfcircle Drawing
-    NSBezierPath *halfcirclePath = [NSBezierPath bezierPath];
-    [halfcirclePath moveToPoint: NSMakePoint(NSMinX(frame) + 0.93316 * NSWidth(frame), NSMinY(frame) + 0.46157 * NSHeight(frame))];
-    [halfcirclePath curveToPoint: NSMakePoint(NSMinX(frame) + 0.78652 * NSWidth(frame), NSMinY(frame) + 0.81548 * NSHeight(frame)) controlPoint1: NSMakePoint(NSMinX(frame) + 0.93316 * NSWidth(frame), NSMinY(frame) + 0.46157 * NSHeight(frame)) controlPoint2: NSMakePoint(NSMinX(frame) + 0.94476 * NSWidth(frame), NSMinY(frame) + 0.66376 * NSHeight(frame))];
-    [halfcirclePath curveToPoint: NSMakePoint(NSMinX(frame) + 0.21348 * NSWidth(frame), NSMinY(frame) + 0.81548 * NSHeight(frame)) controlPoint1: NSMakePoint(NSMinX(frame) + 0.62828 * NSWidth(frame), NSMinY(frame) + 0.96721 * NSHeight(frame)) controlPoint2: NSMakePoint(NSMinX(frame) + 0.37172 * NSWidth(frame), NSMinY(frame) + 0.96721 * NSHeight(frame))];
-    [halfcirclePath curveToPoint: NSMakePoint(NSMinX(frame) + 0.06684 * NSWidth(frame), NSMinY(frame) + 0.46157 * NSHeight(frame)) controlPoint1: NSMakePoint(NSMinX(frame) + 0.05524 * NSWidth(frame), NSMinY(frame) + 0.66376 * NSHeight(frame)) controlPoint2: NSMakePoint(NSMinX(frame) + 0.06684 * NSWidth(frame), NSMinY(frame) + 0.46157 * NSHeight(frame))];
-    [halfcirclePath lineToPoint: NSMakePoint(NSMinX(frame) + 0.93316 * NSWidth(frame), NSMinY(frame) + 0.46157 * NSHeight(frame))];
-    [halfcirclePath closePath];
-    [halfcirclePath setLineCapStyle: NSRoundLineCapStyle];
-    [halfcirclePath setLineJoinStyle: NSRoundLineJoinStyle];
-    [gradientUp drawInBezierPath: halfcirclePath angle: -90];
+    // Draw border
+    [borderColor setStroke];
+    [circlePath setLineWidth:1.0];
+    [circlePath stroke];
 }
 
 #pragma mark - Singleton Management
@@ -897,10 +839,11 @@ static NSMutableSet *fixedSizeWindows = nil;
         CGFloat leftPadding = 10.5;
         CGFloat topPadding = 5.5;
         
-        // Eau button colors
-        NSColor *closeColor = [NSColor colorWithCalibratedRed:0.97 green:0.26 blue:0.23 alpha:1.0];
-        NSColor *miniColor = [NSColor colorWithCalibratedRed:0.9 green:0.7 blue:0.3 alpha:1.0];
-        NSColor *zoomColor = [NSColor colorWithCalibratedRed:0.322 green:0.778 blue:0.244 alpha:1.0];
+        // Eau button colors - clean flat style
+        // Close: red/orange, Minimize/Maximize: grey
+        NSColor *closeColor = [NSColor colorWithCalibratedRed:0.92 green:0.45 blue:0.32 alpha:1.0];
+        NSColor *miniColor = [NSColor colorWithCalibratedWhite:0.75 alpha:1.0];
+        NSColor *zoomColor = [NSColor colorWithCalibratedWhite:0.75 alpha:1.0];
 
         if (styleMask & NSClosableWindowMask) {
             NSRect closeFrame;
