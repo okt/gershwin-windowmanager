@@ -834,10 +834,10 @@ static NSMutableSet *fixedSizeWindows = nil;
         NSLog(@"Drawing buttons for theme: %@ (isEau=%d)", [theme name], isEauTheme);
         
         // Button size and spacing for Eau
-        CGFloat buttonSize = 15.0;
-        CGFloat buttonSpacing = 4.0;
+        CGFloat buttonSize = 11.0;  // Smaller clean flat buttons
+        CGFloat buttonSpacing = 6.0;
         CGFloat leftPadding = 10.5;
-        CGFloat topPadding = 5.5;
+        CGFloat topPadding = 7.5;  // Adjusted for smaller buttons
         
         // Eau button colors - clean flat style
         // Close: red/orange, Minimize/Maximize: grey
