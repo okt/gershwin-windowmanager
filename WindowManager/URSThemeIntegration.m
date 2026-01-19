@@ -56,6 +56,13 @@ static NSMutableSet *fixedSizeWindows = nil;
     }
 }
 
+// Button type constants for icon drawing
+typedef NS_ENUM(NSInteger, EauButtonType) {
+    EauButtonTypeClose = 0,
+    EauButtonTypeMinimize = 1,
+    EauButtonTypeMaximize = 2
+};
+
 // Method to draw clean flat Eau button (replaces old 3D orb style)
 + (void)drawEauButtonBall:(NSRect)frame withColor:(NSColor*)baseColor {
     // Clean flat button with inset gradient effect
@@ -79,6 +86,55 @@ static NSMutableSet *fixedSizeWindows = nil;
     [borderColor setStroke];
     [circlePath setLineWidth:1.0];
     [circlePath stroke];
+}
+
+// Method to draw button icon (x, -, arrow) inside the button
++ (void)drawEauButtonIcon:(NSRect)frame forType:(EauButtonType)buttonType {
+    NSColor *iconColor;
+    if (buttonType == EauButtonTypeClose) {
+        // Darker icon for red background
+        iconColor = [NSColor colorWithCalibratedWhite:0.35 alpha:1.0];
+    } else {
+        // Dark icon for grey background
+        iconColor = [NSColor colorWithCalibratedWhite:0.4 alpha:1.0];
+    }
+    [iconColor setStroke];
+
+    NSBezierPath *iconPath = [NSBezierPath bezierPath];
+    [iconPath setLineWidth:1.2];
+    [iconPath setLineCapStyle:NSRoundLineCapStyle];
+
+    CGFloat cx = NSMidX(frame);
+    CGFloat cy = NSMidY(frame);
+    CGFloat s = 2.5;  // Icon half-size
+
+    switch (buttonType) {
+        case EauButtonTypeClose:
+            // Close: x (two crossed lines)
+            [iconPath moveToPoint:NSMakePoint(cx - s, cy - s)];
+            [iconPath lineToPoint:NSMakePoint(cx + s, cy + s)];
+            [iconPath moveToPoint:NSMakePoint(cx + s, cy - s)];
+            [iconPath lineToPoint:NSMakePoint(cx - s, cy + s)];
+            break;
+
+        case EauButtonTypeMinimize:
+            // Minimize: - (horizontal line)
+            [iconPath moveToPoint:NSMakePoint(cx - s, cy)];
+            [iconPath lineToPoint:NSMakePoint(cx + s, cy)];
+            break;
+
+        case EauButtonTypeMaximize:
+            // Maximize: diagonal arrow pointing up-right
+            [iconPath moveToPoint:NSMakePoint(cx - s, cy - s)];
+            [iconPath lineToPoint:NSMakePoint(cx + s, cy + s)];
+            // Arrow head at top-right
+            [iconPath moveToPoint:NSMakePoint(cx + s - 2.5, cy + s)];
+            [iconPath lineToPoint:NSMakePoint(cx + s, cy + s)];
+            [iconPath lineToPoint:NSMakePoint(cx + s, cy + s - 2.5)];
+            break;
+    }
+
+    [iconPath stroke];
 }
 
 #pragma mark - Singleton Management
@@ -849,27 +905,28 @@ static NSMutableSet *fixedSizeWindows = nil;
             NSRect closeFrame;
             if (isEauTheme) {
                 // Eau: Close button is first on LEFT
-                closeFrame = NSMakeRect(leftPadding, 
+                closeFrame = NSMakeRect(leftPadding,
                                         titleBarRect.size.height - buttonSize - topPadding,
                                         buttonSize, buttonSize);
             } else {
                 closeFrame = [theme closeButtonFrameForBounds:drawRect];
             }
-            
-            // Draw button ball (Eau-style) or just the image (other themes)
+
+            // Draw button ball and icon (Eau-style) or just the image (other themes)
             if (isEauTheme) {
                 [URSThemeIntegration drawEauButtonBall:closeFrame withColor:closeColor];
-            }
-            
-            // Draw button icon
-            NSImage *closeImage = [NSImage imageNamed:@"common_Close"];
-            if (closeImage) {
-                NSRect imageRect = NSMakeRect(
-                    closeFrame.origin.x + (closeFrame.size.width - closeImage.size.width) / 2,
-                    closeFrame.origin.y + (closeFrame.size.height - closeImage.size.height) / 2,
-                    closeImage.size.width, closeImage.size.height);
-                [closeImage drawInRect:imageRect fromRect:NSZeroRect 
-                             operation:NSCompositeSourceOver fraction:1.0];
+                [URSThemeIntegration drawEauButtonIcon:closeFrame forType:EauButtonTypeClose];
+            } else {
+                // Non-Eau themes: use theme image
+                NSImage *closeImage = [NSImage imageNamed:@"common_Close"];
+                if (closeImage) {
+                    NSRect imageRect = NSMakeRect(
+                        closeFrame.origin.x + (closeFrame.size.width - closeImage.size.width) / 2,
+                        closeFrame.origin.y + (closeFrame.size.height - closeImage.size.height) / 2,
+                        closeImage.size.width, closeImage.size.height);
+                    [closeImage drawInRect:imageRect fromRect:NSZeroRect
+                                 operation:NSCompositeSourceOver fraction:1.0];
+                }
             }
             NSLog(@"Drew close button at: %@", NSStringFromRect(closeFrame));
         }
@@ -884,19 +941,20 @@ static NSMutableSet *fixedSizeWindows = nil;
             } else {
                 miniFrame = [theme miniaturizeButtonFrameForBounds:drawRect];
             }
-            
+
             if (isEauTheme) {
                 [URSThemeIntegration drawEauButtonBall:miniFrame withColor:miniColor];
-            }
-            
-            NSImage *miniImage = [NSImage imageNamed:@"common_Miniaturize"];
-            if (miniImage) {
-                NSRect imageRect = NSMakeRect(
-                    miniFrame.origin.x + (miniFrame.size.width - miniImage.size.width) / 2,
-                    miniFrame.origin.y + (miniFrame.size.height - miniImage.size.height) / 2,
-                    miniImage.size.width, miniImage.size.height);
-                [miniImage drawInRect:imageRect fromRect:NSZeroRect
-                            operation:NSCompositeSourceOver fraction:1.0];
+                [URSThemeIntegration drawEauButtonIcon:miniFrame forType:EauButtonTypeMinimize];
+            } else {
+                NSImage *miniImage = [NSImage imageNamed:@"common_Miniaturize"];
+                if (miniImage) {
+                    NSRect imageRect = NSMakeRect(
+                        miniFrame.origin.x + (miniFrame.size.width - miniImage.size.width) / 2,
+                        miniFrame.origin.y + (miniFrame.size.height - miniImage.size.height) / 2,
+                        miniImage.size.width, miniImage.size.height);
+                    [miniImage drawInRect:imageRect fromRect:NSZeroRect
+                                operation:NSCompositeSourceOver fraction:1.0];
+                }
             }
             NSLog(@"Drew miniaturize button at: %@", NSStringFromRect(miniFrame));
         }
@@ -914,19 +972,20 @@ static NSMutableSet *fixedSizeWindows = nil;
                 zoomFrame = NSMakeRect(miniFrame.origin.x + miniFrame.size.width + 4,
                                        miniFrame.origin.y, miniFrame.size.width, miniFrame.size.height);
             }
-            
+
             if (isEauTheme) {
                 [URSThemeIntegration drawEauButtonBall:zoomFrame withColor:zoomColor];
-            }
-            
-            NSImage *zoomImage = [NSImage imageNamed:@"common_Zoom"];
-            if (zoomImage) {
-                NSRect imageRect = NSMakeRect(
-                    zoomFrame.origin.x + (zoomFrame.size.width - zoomImage.size.width) / 2,
-                    zoomFrame.origin.y + (zoomFrame.size.height - zoomImage.size.height) / 2,
-                    zoomImage.size.width, zoomImage.size.height);
-                [zoomImage drawInRect:imageRect fromRect:NSZeroRect
-                            operation:NSCompositeSourceOver fraction:1.0];
+                [URSThemeIntegration drawEauButtonIcon:zoomFrame forType:EauButtonTypeMaximize];
+            } else {
+                NSImage *zoomImage = [NSImage imageNamed:@"common_Zoom"];
+                if (zoomImage) {
+                    NSRect imageRect = NSMakeRect(
+                        zoomFrame.origin.x + (zoomFrame.size.width - zoomImage.size.width) / 2,
+                        zoomFrame.origin.y + (zoomFrame.size.height - zoomImage.size.height) / 2,
+                        zoomImage.size.width, zoomImage.size.height);
+                    [zoomImage drawInRect:imageRect fromRect:NSZeroRect
+                                operation:NSCompositeSourceOver fraction:1.0];
+                }
             }
             NSLog(@"Drew zoom button at: %@", NSStringFromRect(zoomFrame));
         }
