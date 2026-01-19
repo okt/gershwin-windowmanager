@@ -124,13 +124,20 @@ typedef NS_ENUM(NSInteger, EauButtonType) {
             break;
 
         case EauButtonTypeMaximize:
-            // Maximize: diagonal arrow pointing up-right
-            [iconPath moveToPoint:NSMakePoint(cx - s, cy - s)];
-            [iconPath lineToPoint:NSMakePoint(cx + s, cy + s)];
-            // Arrow head at top-right
-            [iconPath moveToPoint:NSMakePoint(cx + s - 2.5, cy + s)];
-            [iconPath lineToPoint:NSMakePoint(cx + s, cy + s)];
-            [iconPath lineToPoint:NSMakePoint(cx + s, cy + s - 2.5)];
+            // Maximize: square with corners knocked off (octagon-like)
+            {
+                CGFloat corner = 1.2;  // Corner cut size
+                // Draw clockwise starting from top-left corner cut
+                [iconPath moveToPoint:NSMakePoint(cx - s + corner, cy + s)];        // Top edge start
+                [iconPath lineToPoint:NSMakePoint(cx + s - corner, cy + s)];        // Top edge end
+                [iconPath lineToPoint:NSMakePoint(cx + s, cy + s - corner)];        // Top-right corner
+                [iconPath lineToPoint:NSMakePoint(cx + s, cy - s + corner)];        // Right edge
+                [iconPath lineToPoint:NSMakePoint(cx + s - corner, cy - s)];        // Bottom-right corner
+                [iconPath lineToPoint:NSMakePoint(cx - s + corner, cy - s)];        // Bottom edge
+                [iconPath lineToPoint:NSMakePoint(cx - s, cy - s + corner)];        // Bottom-left corner
+                [iconPath lineToPoint:NSMakePoint(cx - s, cy + s - corner)];        // Left edge
+                [iconPath closePath];  // Close back to start (top-left corner)
+            }
             break;
     }
 
@@ -890,10 +897,10 @@ typedef NS_ENUM(NSInteger, EauButtonType) {
         NSLog(@"Drawing buttons for theme: %@ (isEau=%d)", [theme name], isEauTheme);
         
         // Button size and spacing for Eau
-        CGFloat buttonSize = 11.0;  // Smaller clean flat buttons
+        CGFloat buttonSize = 12.0;  // Clean flat buttons
         CGFloat buttonSpacing = 6.0;
-        CGFloat leftPadding = 10.5;
-        CGFloat topPadding = 7.5;  // Adjusted for smaller buttons
+        CGFloat leftPadding = 10.0;
+        CGFloat topPadding = 7.0;  // Adjusted for button size
         
         // Eau button colors - clean flat style
         // Close: red/orange, Minimize/Maximize: grey
