@@ -902,11 +902,11 @@ typedef NS_ENUM(NSInteger, EauButtonType) {
         CGFloat leftPadding = 10.0;
         CGFloat topPadding = 7.0;  // Adjusted for button size
         
-        // Eau button colors - traffic light style
-        // Close: bright red, Minimize: yellow/amber, Maximize: green
-        NSColor *closeColor = [NSColor colorWithCalibratedRed:1.0 green:0.37 blue:0.34 alpha:1.0];
-        NSColor *miniColor = [NSColor colorWithCalibratedRed:1.0 green:0.74 blue:0.18 alpha:1.0];
-        NSColor *zoomColor = [NSColor colorWithCalibratedRed:0.15 green:0.79 blue:0.25 alpha:1.0];
+        // Eau button colors - deep jewel tones
+        // Close: deep red, Minimize: deep purple, Maximize: forest green
+        NSColor *closeColor = [NSColor colorWithCalibratedRed:0.75 green:0.22 blue:0.22 alpha:1.0];
+        NSColor *miniColor = [NSColor colorWithCalibratedRed:0.45 green:0.25 blue:0.55 alpha:1.0];
+        NSColor *zoomColor = [NSColor colorWithCalibratedRed:0.22 green:0.50 blue:0.28 alpha:1.0];
 
         if (styleMask & NSClosableWindowMask) {
             NSRect closeFrame;
