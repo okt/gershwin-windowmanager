@@ -674,6 +674,9 @@
 
 - (void)maximizeToSize:(XCBSize)aSize andPosition:(XCBPoint)aPosition
 {
+    NSLog(@"[maximizeToSize] window=%u received position=(%d,%d) size=(%u,%u)",
+          [self window], aPosition.x, aPosition.y, aSize.width, aSize.height);
+
     uint16_t mask = XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y | XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT;
 
 
@@ -691,6 +694,9 @@
     XCBPoint newPoint = XCBMakePoint(aPosition.x, aPosition.y);
     XCBRect newRect = XCBMakeRect(newPoint, newSize);
     [self setWindowRect:newRect];
+
+    NSLog(@"[maximizeToSize] window=%u set windowRect to x=%d y=%d w=%u h=%u",
+          [self window], newRect.position.x, newRect.position.y, newRect.size.width, newRect.size.height);
 
 
     valueList[0] = aPosition.x;

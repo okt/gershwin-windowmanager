@@ -1741,6 +1741,8 @@
                     NSLog(@"GSTheme: Maximizing window");
                     XCBRect startRect = [frame windowRect];
                     NSRect workarea = [self currentWorkarea];
+                    NSLog(@"GSTheme: Workarea for maximize: x=%.0f y=%.0f w=%.0f h=%.0f",
+                          workarea.origin.x, workarea.origin.y, workarea.size.width, workarea.size.height);
                     XCBSize size = XCBMakeSize((uint32_t)workarea.size.width, (uint32_t)workarea.size.height);
                     XCBPoint position = XCBMakePoint((int32_t)workarea.origin.x, (int32_t)workarea.origin.y);
 
@@ -1762,6 +1764,12 @@
                         XCBPoint clientPos = XCBMakePoint(0, titleHgt - 1);
                         [clientWindow maximizeToSize:clientSize andPosition:clientPos];
                     }
+
+                    NSLog(@"GSTheme: After maximize - frame: x=%d y=%d w=%u h=%u, client: x=%d y=%d w=%u h=%u",
+                          [frame windowRect].position.x, [frame windowRect].position.y,
+                          [frame windowRect].size.width, [frame windowRect].size.height,
+                          [clientWindow windowRect].position.x, [clientWindow windowRect].position.y,
+                          [clientWindow windowRect].size.width, [clientWindow windowRect].size.height);
 
                     // Redraw titlebar with GSTheme at new size
                     [URSThemeIntegration renderGSThemeToWindow:frame
@@ -2376,14 +2384,16 @@
 - (void)readAndRegisterStrutForWindow:(xcb_window_t)windowId
 {
     EWMHService *ewmhService = [EWMHService sharedInstanceWithConnection:connection];
-    
+
     // Create a temporary window object to read properties
     XCBWindow *window = [[XCBWindow alloc] initWithXCBWindow:windowId andConnection:connection];
     if (!window) {
         NSLog(@"[ICCCM] Cannot create window object for %u", windowId);
         return;
     }
-    
+
+    NSLog(@"[ICCCM] Reading strut for window %u", windowId);
+
     // Try to read _NET_WM_STRUT_PARTIAL first (more precise)
     uint32_t strutPartial[12] = {0};
     if ([ewmhService readStrutPartialForWindow:window strut:strutPartial]) {
@@ -2421,9 +2431,11 @@
         [strutData setObject:@(NO) forKey:@"isPartial"];
         
         [self.windowStruts setObject:strutData forKey:@(windowId)];
-        
+
         NSLog(@"[ICCCM] Registered strut for window %u: left=%u, right=%u, top=%u, bottom=%u",
               windowId, strut[0], strut[1], strut[2], strut[3]);
+    } else {
+        NSLog(@"[ICCCM] No strut found for window %u (neither _NET_WM_STRUT_PARTIAL nor _NET_WM_STRUT)", windowId);
     }
 }
 
