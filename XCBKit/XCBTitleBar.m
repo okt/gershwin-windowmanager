@@ -218,7 +218,7 @@
         [hideWindowButton setCanMove:NO];
         [hideWindowButton setIsCloseButton:YES];
 
-        hideButtonColor = XCBMakeColor(0.92, 0.45, 0.32, 1); // Clean flat red/orange
+        hideButtonColor = XCBMakeColor(1.0, 0.37, 0.34, 1); // Bright red
 
         shapeExtensionSupported = [[hideWindowButton shape] checkSupported];
         [[hideWindowButton shape] calculateDimensionsFromGeometries:[hideWindowButton geometries]];
@@ -252,7 +252,7 @@
         [minimizeWindowButton setCanMove:NO];
         [minimizeWindowButton setIsMinimizeButton:YES];
 
-        minimizeButtonColor = XCBMakeColor(0.75, 0.75, 0.75, 1); // Clean flat grey
+        minimizeButtonColor = XCBMakeColor(1.0, 0.74, 0.18, 1); // Yellow/amber
 
         shapeExtensionSupported = [[minimizeWindowButton shape] checkSupported];
         [[minimizeWindowButton shape] calculateDimensionsFromGeometries:[minimizeWindowButton geometries]];
@@ -286,7 +286,7 @@
         [maximizeWindowButton setCanMove:NO];
         [maximizeWindowButton setIsMaximizeButton:YES];
 
-        maximizeButtonColor = XCBMakeColor(0.75, 0.75, 0.75, 1); // Clean flat grey
+        maximizeButtonColor = XCBMakeColor(0.15, 0.79, 0.25, 1); // Green
 
         shapeExtensionSupported = [[maximizeWindowButton shape] checkSupported];
         [[maximizeWindowButton shape] calculateDimensionsFromGeometries:[maximizeWindowButton geometries]];
