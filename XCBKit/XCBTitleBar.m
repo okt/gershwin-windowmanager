@@ -252,7 +252,7 @@
         [minimizeWindowButton setCanMove:NO];
         [minimizeWindowButton setIsMinimizeButton:YES];
 
-        minimizeButtonColor = XCBMakeColor(0.45, 0.25, 0.55, 1); // Deep purple
+        minimizeButtonColor = XCBMakeColor(0.55, 0.30, 0.65, 1); // Brighter purple
 
         shapeExtensionSupported = [[minimizeWindowButton shape] checkSupported];
         [[minimizeWindowButton shape] calculateDimensionsFromGeometries:[minimizeWindowButton geometries]];
