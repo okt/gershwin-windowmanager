@@ -919,10 +919,10 @@ typedef NS_ENUM(NSInteger, EauButtonType) {
                 closeFrame = [theme closeButtonFrameForBounds:drawRect];
             }
 
-            // Draw button ball and icon (Eau-style) or just the image (other themes)
+            // Draw button ball (Eau-style) or just the image (other themes)
             if (isEauTheme) {
                 [URSThemeIntegration drawEauButtonBall:closeFrame withColor:closeColor];
-                [URSThemeIntegration drawEauButtonIcon:closeFrame forType:EauButtonTypeClose];
+                // No icon - just the red circle
             } else {
                 // Non-Eau themes: use theme image
                 NSImage *closeImage = [NSImage imageNamed:@"common_Close"];
@@ -982,7 +982,7 @@ typedef NS_ENUM(NSInteger, EauButtonType) {
 
             if (isEauTheme) {
                 [URSThemeIntegration drawEauButtonBall:zoomFrame withColor:zoomColor];
-                [URSThemeIntegration drawEauButtonIcon:zoomFrame forType:EauButtonTypeMaximize];
+                // No icon - just the grey circle
             } else {
                 NSImage *zoomImage = [NSImage imageNamed:@"common_Zoom"];
                 if (zoomImage) {
