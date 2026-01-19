@@ -1762,8 +1762,24 @@
                     if (clientWindow) {
                         XCBSize clientSize = XCBMakeSize((uint32_t)workarea.size.width, (uint32_t)(workarea.size.height - titleHgt));
                         XCBPoint clientPos = XCBMakePoint(0, titleHgt - 1);
+                        NSLog(@"GSTheme: Maximizing client window %u to size %ux%u at position (%d,%d)",
+                              [clientWindow window], clientSize.width, clientSize.height, clientPos.x, clientPos.y);
                         [clientWindow maximizeToSize:clientSize andPosition:clientPos];
+                    } else {
+                        NSLog(@"GSTheme: WARNING - clientWindow is nil, cannot maximize client!");
                     }
+
+                    NSLog(@"GSTheme: After maximize - frame: x=%d y=%d w=%u h=%u",
+                          [frame windowRect].position.x, [frame windowRect].position.y,
+                          [frame windowRect].size.width, [frame windowRect].size.height);
+                    if (clientWindow) {
+                        NSLog(@"GSTheme: After maximize - client: x=%d y=%d w=%u h=%u",
+                              [clientWindow windowRect].position.x, [clientWindow windowRect].position.y,
+                              [clientWindow windowRect].size.width, [clientWindow windowRect].size.height);
+                    }
+
+                    // Also notify the client about the resize via configureClient
+                    [frame configureClient];
 
                     NSLog(@"GSTheme: After maximize - frame: x=%d y=%d w=%u h=%u, client: x=%d y=%d w=%u h=%u",
                           [frame windowRect].position.x, [frame windowRect].position.y,
