@@ -905,7 +905,7 @@ typedef NS_ENUM(NSInteger, EauButtonType) {
         // Eau button colors - deep jewel tones
         // Close: deep red, Minimize: deep purple, Maximize: forest green
         NSColor *closeColor = [NSColor colorWithCalibratedRed:0.75 green:0.22 blue:0.22 alpha:1.0];
-        NSColor *miniColor = [NSColor colorWithCalibratedRed:0.45 green:0.25 blue:0.55 alpha:1.0];
+        NSColor *miniColor = [NSColor colorWithCalibratedRed:0.55 green:0.30 blue:0.65 alpha:1.0];
         NSColor *zoomColor = [NSColor colorWithCalibratedRed:0.22 green:0.50 blue:0.28 alpha:1.0];
 
         if (styleMask & NSClosableWindowMask) {
