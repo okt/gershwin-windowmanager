@@ -729,10 +729,23 @@
     // ALWAYS recalculate to get current focus state
     [self updateWindowStack];
     
-    if ([self.windowEntries count] < 2) {
-        NSLog(@"[WindowSwitcher] Not enough windows to switch (count: %lu)", 
+    // Check if we have at least one window OR if we have only minimized windows
+    if ([self.windowEntries count] < 1) {
+        NSLog(@"[WindowSwitcher] No windows to switch (count: %lu)", 
               (unsigned long)[self.windowEntries count]);
         return;
+    }
+    
+    // Special case: if there's only 1 window and it's minimized, allow switching to unminimize it
+    if ([self.windowEntries count] == 1) {
+        URSWindowEntry *entry = [self.windowEntries objectAtIndex:0];
+        if (entry.wasMinimized) {
+            NSLog(@"[WindowSwitcher] Single minimized window - Alt-Tab will unminimize it");
+            // Allow switching to continue so the user can unminimize this window
+        } else {
+            NSLog(@"[WindowSwitcher] Only 1 non-minimized window, nothing to switch to");
+            return;
+        }
     }
     
     // Reset all temporarily shown flags
@@ -740,7 +753,7 @@
         entry.temporarilyShown = NO;
     }
     
-    // Internal index starts at 0 (currently focused window)
+    // Internal index starts at 0 (currently focused window or first minimized window)
     self.currentIndex = 0;
     self.isSwitching = YES;
     
@@ -760,11 +773,17 @@
     
     // Show overlay centered on screen
     [self.overlay showCenteredOnScreen];
-    // Start with index 1 highlighted (the next window to switch to)
-    [self.overlay updateWithTitles:titles icons:icons currentIndex:1];
     
-    // Immediately cycle to next window (will move to index 1, which is already shown)
-    [self cycleForward];
+    // For single window case, highlight index 0
+    // For multiple windows, start with index 1 highlighted (the next window to switch to)
+    NSInteger initialHighlight = ([self.windowEntries count] == 1) ? 0 : 1;
+    [self.overlay updateWithTitles:titles icons:icons currentIndex:initialHighlight];
+    
+    // If there's more than one window, immediately cycle to next window
+    // If there's only one window, just stay at index 0 (it will be unminimized on completeSwitching)
+    if ([self.windowEntries count] > 1) {
+        [self cycleForward];
+    }
 }
 
 - (void)cycleForward {
@@ -773,7 +792,7 @@
         return;
     }
     
-    if ([self.windowEntries count] < 2) return;
+    if ([self.windowEntries count] < 1) return;
     
     // Move to next window (cycling through all available windows)
     // Start at 0, cycle through 1,2,3,...,count-1, then back to 0
@@ -789,7 +808,7 @@
         return;
     }
     
-    if ([self.windowEntries count] < 2) return;
+    if ([self.windowEntries count] < 1) return;
     
     // Move to previous window (cycling through all available windows)
     self.currentIndex = (self.currentIndex - 1 + [self.windowEntries count]) % [self.windowEntries count];
