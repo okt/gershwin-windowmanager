@@ -31,6 +31,32 @@
 - (CGFloat)windowBottomCornerRadius;
 @end
 
+// Helper function to send synthetic ConfigureNotify to client during resize
+// Per ICCCM 4.1.5, reparented windows need synthetic ConfigureNotify events
+// This inline version avoids X server round-trips for better performance
+static void sendSyntheticConfigureNotify(xcb_connection_t *conn,
+                                          XCBWindow *clientWindow,
+                                          int16_t rootX,
+                                          int16_t rootY,
+                                          uint16_t width,
+                                          uint16_t height)
+{
+    xcb_configure_notify_event_t event;
+    memset(&event, 0, sizeof(event));
+    event.response_type = XCB_CONFIGURE_NOTIFY;
+    event.event = [clientWindow window];
+    event.window = [clientWindow window];
+    event.x = rootX;
+    event.y = rootY;
+    event.width = width;
+    event.height = height;
+    event.border_width = 0;
+    event.above_sibling = XCB_NONE;
+    event.override_redirect = 0;
+
+    xcb_send_event(conn, 0, [clientWindow window],
+                   XCB_EVENT_MASK_STRUCTURE_NOTIFY, (const char *)&event);
+}
 
 @implementation XCBFrame
 
@@ -329,13 +355,11 @@
     if (rightBorderClicked && !bottomBorderClicked && !leftBorderClicked && !topBorderClicked)
     {
         resizeFromRightForEvent(anEvent, aXcbConnection, self, minWidthHint);
-        //[self configureClient];
     }
 
     if (leftBorderClicked && !bottomBorderClicked && !rightBorderClicked && !topBorderClicked)
     {
         resizeFromLeftForEvent(anEvent, aXcbConnection, self, minWidthHint);
-        //[self configureClient];
     }
 
 
@@ -344,14 +368,12 @@
     if (bottomBorderClicked && !rightBorderClicked && !leftBorderClicked)
     {
         resizeFromBottomForEvent(anEvent, aXcbConnection, self, minHeightHint, titleHeight);
-        //[self configureClient];
     }
 
 
     if (topBorderClicked && !rightBorderClicked && !leftBorderClicked && !bottomBorderClicked)
     {
         resizeFromTopForEvent(anEvent, aXcbConnection, self, minHeightHint, titleHeight);
-        //[self configureClient];
     }
 
 
@@ -386,6 +408,9 @@
 
     // Update resize zone positions if they exist
     [self updateAllResizeZonePositions];
+
+    // Update shape mask for rounded corners (must match new window dimensions)
+    [self applyRoundedCornersShapeMask];
 
 }
 
@@ -707,6 +732,13 @@ void resizeFromRightForEvent(xcb_motion_notify_event_t *anEvent,
         [clientWindow setOriginalRect:clientRect];
         //[titleBar drawTitleBarComponentsForColor:TitleBarUpColor];
 
+        // Send synthetic ConfigureNotify to client
+        sendSyntheticConfigureNotify(connection, clientWindow,
+                                      frameRect.position.x,
+                                      frameRect.position.y + [frame titleHeight],
+                                      clientRect.size.width,
+                                      clientRect.size.height);
+
         clientWindow = nil;
         titleBar = nil;
         connection = NULL;
@@ -716,10 +748,10 @@ void resizeFromRightForEvent(xcb_motion_notify_event_t *anEvent,
     xcb_configure_window(connection, [frame window], XCB_CONFIG_WINDOW_WIDTH, &values);
     xcb_configure_window(connection, [titleBar window], XCB_CONFIG_WINDOW_WIDTH, &values);
     xcb_configure_window(connection, [clientWindow window], XCB_CONFIG_WINDOW_WIDTH, &values);
-    
+
     // Flush to ensure smooth resizing updates
     xcb_flush(connection);
-    
+
     frameRect.size.width = anEvent->event_x;
 
     [frame setWindowRect:frameRect];
@@ -733,6 +765,13 @@ void resizeFromRightForEvent(xcb_motion_notify_event_t *anEvent,
     [clientWindow setWindowRect:clientRect];
     [clientWindow setOriginalRect:clientRect];
     //[titleBar drawTitleBarComponentsForColor:TitleBarUpColor];
+
+    // Send synthetic ConfigureNotify to client
+    sendSyntheticConfigureNotify(connection, clientWindow,
+                                  frameRect.position.x,
+                                  frameRect.position.y + [frame titleHeight],
+                                  clientRect.size.width,
+                                  clientRect.size.height);
 
     clientWindow = nil;
     titleBar = nil;
@@ -790,6 +829,13 @@ void resizeFromLeftForEvent(xcb_motion_notify_event_t *anEvent,
         [clientWindow setOriginalRect:clientRect];
         //[titleBar drawTitleBarComponentsForColor:TitleBarUpColor];
 
+        // Send synthetic ConfigureNotify to client
+        sendSyntheticConfigureNotify(connection, clientWindow,
+                                      rect.position.x,
+                                      rect.position.y + [frame titleHeight],
+                                      clientRect.size.width,
+                                      clientRect.size.height);
+
         clientWindow = nil;
         titleBar = nil;
         connection = NULL;
@@ -803,7 +849,7 @@ void resizeFromLeftForEvent(xcb_motion_notify_event_t *anEvent,
     values[0] = 0;
     xcb_configure_window(connection, [titleBar window], XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_WIDTH, &values);
     xcb_configure_window(connection, [clientWindow window], XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_WIDTH, &values);
-    
+
     // Flush to ensure smooth resizing updates
     xcb_flush(connection);
 
@@ -820,6 +866,13 @@ void resizeFromLeftForEvent(xcb_motion_notify_event_t *anEvent,
     [clientWindow setWindowRect:clientRect];
     [clientWindow setOriginalRect:clientRect];
     //[titleBar drawTitleBarComponentsForColor:TitleBarUpColor];
+
+    // Send synthetic ConfigureNotify to client
+    sendSyntheticConfigureNotify(connection, clientWindow,
+                                  rect.position.x,
+                                  rect.position.y + [frame titleHeight],
+                                  clientRect.size.width,
+                                  clientRect.size.height);
 
     clientWindow = nil;
     titleBar = nil;
@@ -856,6 +909,13 @@ void resizeFromBottomForEvent(xcb_motion_notify_event_t *anEvent,
         [clientWindow setWindowRect:clientRect];
         [clientWindow setOriginalRect:clientRect];
 
+        // Send synthetic ConfigureNotify to client
+        sendSyntheticConfigureNotify(connection, clientWindow,
+                                      rect.position.x,
+                                      rect.position.y + titleBarHeight,
+                                      clientRect.size.width,
+                                      clientRect.size.height);
+
         clientWindow = nil;
         connection = NULL;
         return;
@@ -866,10 +926,10 @@ void resizeFromBottomForEvent(xcb_motion_notify_event_t *anEvent,
     clientRect.size.height = values[0];
     values[0] = anEvent->event_y;
     xcb_configure_window(connection, [frame window], XCB_CONFIG_WINDOW_HEIGHT, &values);
-    
+
     // Flush to ensure smooth resizing updates
     xcb_flush(connection);
-    
+
     [clientWindow setWindowRect:clientRect];
     [clientWindow setOriginalRect:clientRect];
 
@@ -877,6 +937,13 @@ void resizeFromBottomForEvent(xcb_motion_notify_event_t *anEvent,
     rect.size.height = values[0];
     [frame setWindowRect:rect];
     [frame setOriginalRect:rect];
+
+    // Send synthetic ConfigureNotify to client
+    sendSyntheticConfigureNotify(connection, clientWindow,
+                                  rect.position.x,
+                                  rect.position.y + titleBarHeight,
+                                  clientRect.size.width,
+                                  clientRect.size.height);
 
     clientWindow = nil;
     connection = NULL;
@@ -927,6 +994,13 @@ void resizeFromTopForEvent(xcb_motion_notify_event_t *anEvent,
         [clientWindow setWindowRect:clientRect];
         [clientWindow setOriginalRect:clientRect];
 
+        // Send synthetic ConfigureNotify to client
+        sendSyntheticConfigureNotify(connection, clientWindow,
+                                      rect.position.x,
+                                      rect.position.y + titleBarHeight,
+                                      clientRect.size.width,
+                                      clientRect.size.height);
+
         titleBar = nil;
         clientWindow = nil;
         connection = NULL;
@@ -962,6 +1036,13 @@ void resizeFromTopForEvent(xcb_motion_notify_event_t *anEvent,
 
     [clientWindow setWindowRect:clientRect];
     [clientWindow setOriginalRect:clientRect];
+
+    // Send synthetic ConfigureNotify to client
+    sendSyntheticConfigureNotify(connection, clientWindow,
+                                  rect.position.x,
+                                  rect.position.y + titleBarHeight,
+                                  clientRect.size.width,
+                                  clientRect.size.height);
 
     clientWindow = nil;
     titleBar = nil;
@@ -1015,6 +1096,13 @@ void resizeFromAngleForEvent(xcb_motion_notify_event_t *anEvent,
         [clientWindow setOriginalRect:clientRect];
         //[titleBar drawTitleBarComponentsForColor:TitleBarUpColor];
 
+        // Send synthetic ConfigureNotify to client
+        sendSyntheticConfigureNotify(connection, clientWindow,
+                                      rect.position.x,
+                                      rect.position.y + titleBarHeight,
+                                      clientRect.size.width,
+                                      clientRect.size.height);
+
         titleBar = nil;
         clientWindow = nil;
         connection = NULL;
@@ -1045,6 +1133,13 @@ void resizeFromAngleForEvent(xcb_motion_notify_event_t *anEvent,
     [clientWindow setWindowRect:clientRect];
     [clientWindow setOriginalRect:clientRect];
     //[titleBar drawTitleBarComponentsForColor:TitleBarUpColor];
+
+    // Send synthetic ConfigureNotify to client
+    sendSyntheticConfigureNotify(connection, clientWindow,
+                                  rect.position.x,
+                                  rect.position.y + titleBarHeight,
+                                  clientRect.size.width,
+                                  clientRect.size.height);
 
     titleBar = nil;
     clientWindow = nil;
