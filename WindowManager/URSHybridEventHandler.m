@@ -406,6 +406,8 @@
                 [self handleResizeDuringMotion:lastMotionEvent];
                 // STEP 4: Update compositor for drag or resize (immediate update for responsiveness)
                 [self handleCompositingDuringMotion:lastMotionEvent];
+                // STEP 5: Check for titlebar button hover state changes
+                [self handleTitlebarHoverDuringMotion:lastMotionEvent];
                 needFlush = YES;
                 free(lastMotionEvent);
                 lastMotionEvent = NULL;
@@ -502,6 +504,8 @@
         case XCB_LEAVE_NOTIFY: {
             xcb_leave_notify_event_t *leaveEvent = (xcb_leave_notify_event_t *)event;
             [connection handleLeaveNotify:leaveEvent];
+            // Clear hover state if leaving the hovered titlebar
+            [self handleTitlebarLeave:leaveEvent];
             break;
         }
         case XCB_FOCUS_IN: {
@@ -1580,6 +1584,138 @@
     }
 }
 
+#pragma mark - Titlebar Button Hover Handling
+
+- (void)handleTitlebarHoverDuringMotion:(xcb_motion_notify_event_t*)motionEvent {
+    @try {
+        // Don't process hover during drag or resize operations
+        if ([connection dragState] || [connection resizeState]) {
+            return;
+        }
+
+        // Find the window under the cursor
+        XCBWindow *window = [connection windowForXCBId:motionEvent->event];
+        if (!window) {
+            return;
+        }
+
+        // Check if this is a titlebar
+        if (![window isKindOfClass:[XCBTitleBar class]]) {
+            // Not a titlebar - clear hover state if we were previously hovering
+            if ([URSThemeIntegration hoveredTitlebarWindow] != 0) {
+                xcb_window_t prevTitlebar = [URSThemeIntegration hoveredTitlebarWindow];
+                [URSThemeIntegration clearHoverState];
+                // Trigger redraw of the previously hovered titlebar
+                [self redrawTitlebarById:prevTitlebar];
+                NSLog(@"Hover: Cleared hover state, left titlebar %u", prevTitlebar);
+            }
+            return;
+        }
+
+        NSLog(@"Hover: Motion on titlebar %u at x=%d", motionEvent->event, motionEvent->event_x);
+
+        XCBTitleBar *titlebar = (XCBTitleBar *)window;
+        xcb_window_t titlebarId = [titlebar window];
+        XCBFrame *frame = (XCBFrame *)[titlebar parentWindow];
+
+        if (!frame) {
+            return;
+        }
+
+        // Get titlebar width and determine if it has maximize button
+        XCBRect frameRect = [frame windowRect];
+        CGFloat titlebarWidth = frameRect.size.width;
+
+        // Check if this is a fixed-size window (no maximize button)
+        XCBWindow *clientWindow = [frame childWindowForKey:ClientWindow];
+        xcb_window_t clientWindowId = clientWindow ? [clientWindow window] : 0;
+        BOOL hasMaximize = clientWindowId ? ![URSThemeIntegration isFixedSizeWindow:clientWindowId] : YES;
+
+        // Determine which button (if any) is under the cursor
+        CGFloat mouseX = motionEvent->event_x;
+        NSInteger newButtonIndex = [URSThemeIntegration buttonIndexAtX:mouseX
+                                                              forWidth:titlebarWidth
+                                                           hasMaximize:hasMaximize];
+
+        // Check if hover state changed
+        xcb_window_t prevTitlebar = [URSThemeIntegration hoveredTitlebarWindow];
+        NSInteger prevButtonIndex = [URSThemeIntegration hoveredButtonIndex];
+
+        if (titlebarId != prevTitlebar || newButtonIndex != prevButtonIndex) {
+            NSLog(@"Hover: State changed - titlebar %u button %ld -> titlebar %u button %ld",
+                  prevTitlebar, (long)prevButtonIndex, titlebarId, (long)newButtonIndex);
+
+            // Update hover state
+            [URSThemeIntegration setHoveredTitlebar:titlebarId buttonIndex:newButtonIndex];
+
+            // Redraw the current titlebar
+            [self redrawTitlebar:titlebar inFrame:frame];
+
+            // If we moved from a different titlebar, redraw that one too
+            if (prevTitlebar != 0 && prevTitlebar != titlebarId) {
+                [self redrawTitlebarById:prevTitlebar];
+            }
+        }
+
+    } @catch (NSException *exception) {
+        // Silently ignore exceptions during hover handling
+    }
+}
+
+- (void)handleTitlebarLeave:(xcb_leave_notify_event_t*)leaveEvent {
+    @try {
+        xcb_window_t leavingWindow = leaveEvent->event;
+        xcb_window_t hoveredTitlebar = [URSThemeIntegration hoveredTitlebarWindow];
+
+        // Only clear if leaving the hovered titlebar
+        if (leavingWindow == hoveredTitlebar && hoveredTitlebar != 0) {
+            [URSThemeIntegration clearHoverState];
+            // Redraw the titlebar to remove hover effect
+            [self redrawTitlebarById:leavingWindow];
+        }
+    } @catch (NSException *exception) {
+        // Silently ignore exceptions
+    }
+}
+
+- (void)redrawTitlebar:(XCBTitleBar *)titlebar inFrame:(XCBFrame *)frame {
+    if (!titlebar || !frame) {
+        return;
+    }
+
+    // Get the client window for title
+    XCBWindow *clientWindow = [frame childWindowForKey:ClientWindow];
+    NSString *title = [titlebar windowTitle];
+
+    // Determine if this is the active window
+    BOOL isActive = [titlebar isAbove];
+
+    // Render the titlebar with updated hover state
+    [URSThemeIntegration renderGSThemeToWindow:clientWindow
+                                         frame:frame
+                                         title:title
+                                        active:isActive];
+
+    // Force immediate display update
+    XCBRect rect = [titlebar windowRect];
+    [titlebar drawArea:rect];
+    [connection flush];
+}
+
+- (void)redrawTitlebarById:(xcb_window_t)titlebarId {
+    @try {
+        XCBWindow *window = [connection windowForXCBId:titlebarId];
+        if (!window || ![window isKindOfClass:[XCBTitleBar class]]) {
+            return;
+        }
+        XCBTitleBar *titlebar = (XCBTitleBar *)window;
+        XCBFrame *frame = (XCBFrame *)[titlebar parentWindow];
+        [self redrawTitlebar:titlebar inFrame:frame];
+    } @catch (NSException *exception) {
+        // Silently ignore
+    }
+}
+
 - (void)handleResizeComplete:(xcb_button_release_event_t*)releaseEvent {
     @try {
         // Find the window that was released
@@ -1649,40 +1785,66 @@
 
 #pragma mark - Titlebar Button Handling
 
-// Button hit detection for GSTheme-styled titlebars
+// Button hit detection for edge-style titlebar buttons
+// Layout: Close at left edge, Minimize+Maximize at right edge
 - (GSThemeTitleBarButton)buttonAtPoint:(NSPoint)point forTitlebar:(XCBTitleBar*)titlebar {
-    // Button layout based on actual visual positions from pixel sampling:
-    // Close (red) at x=18, Mini (yellow) at x=37, Zoom (green) at x=56
-    // Buttons are 13px wide with ~19px spacing between centers
-    // Order is: Close, Miniaturize, Zoom (left to right)
-    float buttonSize = 13.0;
-    float buttonSpacing = 19.0;  // Actual spacing between button centers
-    float topMargin = 4.0;       // Adjusted for better vertical hit detection
-    float buttonHeight = 16.0;   // Slightly larger hit area vertically
-    float leftMargin = 12.0;     // Close button starts around x=12
+    // Edge button metrics (must match URSThemeIntegration.m and AppearanceMetrics.h)
+    static const CGFloat EDGE_BUTTON_WIDTH = 22.0;
+    static const CGFloat RIGHT_REGION_WIDTH = 44.0;  // 2 × 22
 
-    // Define button rects (order: close, miniaturize, zoom - matching visual order)
-    NSRect closeRect = NSMakeRect(leftMargin, topMargin, buttonSize, buttonHeight);
-    NSRect miniaturizeRect = NSMakeRect(leftMargin + buttonSpacing, topMargin, buttonSize, buttonHeight);
-    NSRect zoomRect = NSMakeRect(leftMargin + (2 * buttonSpacing), topMargin, buttonSize, buttonHeight);
+    // Get titlebar dimensions
+    XCBRect titlebarRect = [titlebar windowRect];
+    CGFloat titlebarWidth = titlebarRect.size.width;
+    CGFloat titlebarHeight = titlebarRect.size.height;
 
-    NSLog(@"GSTheme: Button hit test at point (%.0f, %.0f)", point.x, point.y);
-    NSLog(@"GSTheme: Close rect: (%.0f, %.0f, %.0f, %.0f)", closeRect.origin.x, closeRect.origin.y, closeRect.size.width, closeRect.size.height);
-    NSLog(@"GSTheme: Miniaturize rect: (%.0f, %.0f, %.0f, %.0f)", miniaturizeRect.origin.x, miniaturizeRect.origin.y, miniaturizeRect.size.width, miniaturizeRect.size.height);
-    NSLog(@"GSTheme: Zoom rect: (%.0f, %.0f, %.0f, %.0f)", zoomRect.origin.x, zoomRect.origin.y, zoomRect.size.width, zoomRect.size.height);
+    // Get the frame to check style mask
+    XCBFrame *frame = nil;
+    if ([[titlebar parentWindow] isKindOfClass:[XCBFrame class]]) {
+        frame = (XCBFrame *)[titlebar parentWindow];
+    }
 
-    // Check which button was clicked (if any)
+    // Determine if window has maximize based on whether it's fixed-size
+    XCBWindow *clientWindow = frame ? [frame childWindowForKey:ClientWindow] : nil;
+    xcb_window_t clientWindowId = clientWindow ? [clientWindow window] : 0;
+    BOOL isFixedSize = clientWindowId && [URSThemeIntegration isFixedSizeWindow:clientWindowId];
+    BOOL hasMaximize = !isFixedSize;
+
+    NSLog(@"GSTheme: Button hit test at point (%.0f, %.0f), titlebar size: %.0fx%.0f, hasMaximize: %d",
+          point.x, point.y, titlebarWidth, titlebarHeight, hasMaximize);
+
+    // Close button at left edge
+    NSRect closeRect = NSMakeRect(0, 0, EDGE_BUTTON_WIDTH, titlebarHeight);
+
+    // Check close button first (left edge)
     if (NSPointInRect(point, closeRect)) {
         NSLog(@"GSTheme: Hit close button");
         return GSThemeTitleBarButtonClose;
     }
-    if (NSPointInRect(point, miniaturizeRect)) {
-        NSLog(@"GSTheme: Hit miniaturize button");
-        return GSThemeTitleBarButtonMiniaturize;
-    }
-    if (NSPointInRect(point, zoomRect)) {
-        NSLog(@"GSTheme: Hit zoom button");
-        return GSThemeTitleBarButtonZoom;
+
+    // Right edge button position
+    NSRect rightEdgeRect = NSMakeRect(titlebarWidth - EDGE_BUTTON_WIDTH, 0,
+                                      EDGE_BUTTON_WIDTH, titlebarHeight);
+
+    if (hasMaximize) {
+        // Window has both minimize and maximize
+        // Minimize at left of right region
+        NSRect miniaturizeRect = NSMakeRect(titlebarWidth - RIGHT_REGION_WIDTH, 0,
+                                            EDGE_BUTTON_WIDTH, titlebarHeight);
+
+        if (NSPointInRect(point, rightEdgeRect)) {
+            NSLog(@"GSTheme: Hit zoom button");
+            return GSThemeTitleBarButtonZoom;
+        }
+        if (NSPointInRect(point, miniaturizeRect)) {
+            NSLog(@"GSTheme: Hit miniaturize button");
+            return GSThemeTitleBarButtonMiniaturize;
+        }
+    } else {
+        // Window has only minimize (no maximize) - minimize is at right edge
+        if (NSPointInRect(point, rightEdgeRect)) {
+            NSLog(@"GSTheme: Hit miniaturize button (at edge, no zoom)");
+            return GSThemeTitleBarButtonMiniaturize;
+        }
     }
 
     NSLog(@"GSTheme: No button hit");
