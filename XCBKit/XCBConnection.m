@@ -516,7 +516,11 @@ static XCBConnection *sharedInstance;
 - (void)handleMapRequest:(xcb_map_request_event_t *)anEvent
 {
     EWMHService *ewmhService = [EWMHService sharedInstanceWithConnection:self];
-    ICCCMService *icccmService = [ICCCMService sharedInstanceWithConnection:self];
+    // Ensure ICCCM service is initialized
+    if (icccmService == nil) {
+        icccmService = [ICCCMService sharedInstanceWithConnection:self];
+    }
+
     BOOL isManaged = NO;
     XCBWindow *window = [self windowForXCBId:anEvent->window];
     
@@ -1092,10 +1096,28 @@ static XCBConnection *sharedInstance;
 
     // Determine if we should use golden ratio placement.
     // We use it if the application hasn't explicitly specified a position (i.e. x=0, y=0).
-    // Also check if the window is a normal window that should be decorated.
+    // If it's at (0,0), we check ICCCM hints to see if this was intentional.
+    // Also, if the window has full screen width (like the Menu bar), don't move it.
     BOOL useGoldenRatio = NO;
     if ([window windowRect].position.x == 0 && [window windowRect].position.y == 0) {
-        useGoldenRatio = YES;
+        BOOL isFullWidth = NO;
+        if (screen && [window windowRect].size.width >= [screen screen]->width_in_pixels) {
+            isFullWidth = YES;
+        }
+
+        if (!isFullWidth) {
+            xcb_size_hints_t *hints = [icccmService wmNormalHintsForWindow:window];
+            if (hints) {
+                if (!(hints->flags & XCB_ICCCM_SIZE_HINT_US_POSITION) && 
+                    !(hints->flags & XCB_ICCCM_SIZE_HINT_P_POSITION)) {
+                    useGoldenRatio = YES;
+                }
+                free(hints);
+            } else {
+                // No hints at all, assume (0,0) is just the default and apply golden ratio
+                useGoldenRatio = YES;
+            }
+        }
     }
 
     int16_t xPos = [window windowRect].position.x;
@@ -1123,7 +1145,7 @@ static XCBConnection *sharedInstance;
 
     XCBCreateWindowTypeRequest *request = [[XCBCreateWindowTypeRequest alloc] initForWindowType:XCBFrameRequest];
     [request setDepth:(screen ? [screen screen]->root_depth : 24)];
-    [request setParentWindow:[screen rootWindow]];
+    [request setParentWindow:(screen ? [screen rootWindow] : 0)];
     [request setXPosition:xPos];
     [request setYPosition:yPos];
     [request setWidth:winWidth];
