@@ -56,87 +56,191 @@ static NSMutableSet *fixedSizeWindows = nil;
     }
 }
 
-// Method to draw authentic Eau button balls using the exact gradient logic from EauWindowButtonCell
-+ (void)drawEauButtonBall:(NSRect)frame withColor:(NSColor*)baseColor {
-    // Replicate EauWindowButtonCell drawBallWithRect logic exactly
-    frame = NSInsetRect(frame, 0.5, 0.5);
-    NSColor *bc = baseColor;
-    float luminosity = 0.5;
+// Edge button metrics (matching Eau theme AppearanceMetrics.h)
+static const CGFloat TITLEBAR_HEIGHT = 24.0;
+static const CGFloat EDGE_BUTTON_WIDTH = 28.0;
+static const CGFloat RIGHT_REGION_WIDTH = 56.0;
+static const CGFloat BUTTON_INNER_RADIUS = 5.0;
+static const CGFloat ICON_STROKE = 1.5;
+static const CGFloat ICON_INSET = 8.0;
 
-    NSColor *gradientDownColor1 = [bc highlightWithLevel: luminosity];
-    NSColor *gradientDownColor2 = [bc colorWithAlphaComponent: 0];
-    NSColor *shadowColor1 = [bc shadowWithLevel: 0.4];
-    NSColor *shadowColor2 = [bc shadowWithLevel: 0.6];
-    NSColor *gradientStrokeColor2 = [shadowColor1 highlightWithLevel: luminosity];
-    NSColor *gradientUpColor1 = [bc highlightWithLevel: luminosity+0.2];
-    NSColor *gradientUpColor2 = [gradientUpColor1 colorWithAlphaComponent: 0.5];
-    NSColor *gradientUpColor3 = [gradientUpColor1 colorWithAlphaComponent: 0];
-    NSColor *light1 = [NSColor whiteColor];
-    NSColor *light2 = [light1 colorWithAlphaComponent:0];
+// Button position enum (matching Eau theme EauTitleBarButtonCell.h)
+typedef NS_ENUM(NSInteger, TitleBarButtonPosition) {
+    TitleBarButtonPositionLeft = 0,       // Close button - left edge
+    TitleBarButtonPositionRightLeft,      // Minimize - left side of right region
+    TitleBarButtonPositionRightRight      // Maximize - right side of right region
+};
 
-    // Gradient Declarations
-    NSGradient *gradientUp = [[NSGradient alloc] initWithColorsAndLocations:
-        gradientUpColor1, 0.1,
-        gradientUpColor2, 0.3,
-        gradientUpColor3, 1.0, nil];
-    NSGradient *gradientDown = [[NSGradient alloc] initWithColorsAndLocations:
-        gradientDownColor1, 0.0,
-        gradientDownColor2, 1.0, nil];
-    NSGradient *baseGradient = [[NSGradient alloc] initWithColorsAndLocations:
-        bc, 0.0,
-        shadowColor1, 0.80, nil];
-    NSGradient *gradientStroke = [[NSGradient alloc] initWithColorsAndLocations:
-        light1, 0.2,
-        light2, 1.0, nil];
-    NSGradient *gradientStroke2 = [[NSGradient alloc] initWithColorsAndLocations:
-        shadowColor2, 0.47,
-        gradientStrokeColor2, 1.0, nil];
+// Draw rectangular edge button with gradient
++ (void)drawEdgeButtonInRect:(NSRect)rect
+                    position:(TitleBarButtonPosition)position
+                      active:(BOOL)active
+                 highlighted:(BOOL)highlighted {
+    // Get gradient colors
+    NSColor *gradientColor1;
+    NSColor *gradientColor2;
 
-    // Drawing code from EauWindowButtonCell
-    NSRect baseCircleGradientStrokeRect = frame;
-    NSRect baseCircleGradientStrokeRect2 = NSInsetRect(baseCircleGradientStrokeRect, 0.5, 0.5);
-    frame = NSInsetRect(frame, 1, 1);
+    if (active) {
+        gradientColor1 = [NSColor colorWithCalibratedRed:0.833 green:0.833 blue:0.833 alpha:1];
+        gradientColor2 = [NSColor colorWithCalibratedRed:0.667 green:0.667 blue:0.667 alpha:1];
+    } else {
+        gradientColor1 = [NSColor colorWithCalibratedRed:0.9 green:0.9 blue:0.9 alpha:1];
+        gradientColor2 = [NSColor colorWithCalibratedRed:0.8 green:0.8 blue:0.8 alpha:1];
+    }
 
-    NSRect baseCircleRect = NSMakeRect(NSMinX(frame) + floor(NSWidth(frame) * 0.06667 + 0.5), NSMinY(frame) + floor(NSHeight(frame) * 0.06667 + 0.5), floor(NSWidth(frame) * 0.93333 + 0.5) - floor(NSWidth(frame) * 0.06667 + 0.5), floor(NSHeight(frame) * 0.93333 + 0.5) - floor(NSHeight(frame) * 0.06667 + 0.5));
-    NSRect basecircle2Rect = NSMakeRect(NSMinX(frame) + floor(NSWidth(frame) * 0.06667 + 0.5), NSMinY(frame) + floor(NSHeight(frame) * 0.06667 + 0.5), floor(NSWidth(frame) * 0.93333 + 0.5) - floor(NSWidth(frame) * 0.06667 + 0.5), floor(NSHeight(frame) * 0.93333 + 0.5) - floor(NSHeight(frame) * 0.06667 + 0.5));
+    if (highlighted) {
+        gradientColor1 = [gradientColor1 shadowWithLevel:0.15];
+        gradientColor2 = [gradientColor2 shadowWithLevel:0.15];
+    }
 
-    // BaseCircleGradientStroke Drawing
-    NSBezierPath *baseCircleGradientStrokePath = [NSBezierPath bezierPathWithOvalInRect: baseCircleGradientStrokeRect];
-    [gradientStroke drawInBezierPath: baseCircleGradientStrokePath angle: 90];
-    NSBezierPath *baseCircleGradientStrokePath2 = [NSBezierPath bezierPathWithOvalInRect: baseCircleGradientStrokeRect2];
-    [gradientStroke2 drawInBezierPath: baseCircleGradientStrokePath2 angle: -90];
+    NSGradient *gradient = [[NSGradient alloc] initWithStartingColor:gradientColor1
+                                                         endingColor:gradientColor2];
 
-    // BaseCircle Drawing
-    NSBezierPath *baseCirclePath = [NSBezierPath bezierPathWithOvalInRect: baseCircleRect];
-    CGFloat baseCircleResizeRatio = MIN(NSWidth(baseCircleRect) / 13, NSHeight(baseCircleRect) / 13);
-    [NSGraphicsContext saveGraphicsState];
-    [baseCirclePath addClip];
-    [baseGradient drawFromCenter: NSMakePoint(NSMidX(baseCircleRect) + 0 * baseCircleResizeRatio, NSMidY(baseCircleRect) + 0 * baseCircleResizeRatio) radius: 2.85 * baseCircleResizeRatio
-        toCenter: NSMakePoint(NSMidX(baseCircleRect) + 0 * baseCircleResizeRatio, NSMidY(baseCircleRect) + 0 * baseCircleResizeRatio) radius: 7.32 * baseCircleResizeRatio
-        options: NSGradientDrawsBeforeStartingLocation | NSGradientDrawsAfterEndingLocation];
-    [NSGraphicsContext restoreGraphicsState];
+    NSColor *borderColor = [NSColor colorWithCalibratedRed:0.4 green:0.4 blue:0.4 alpha:1.0];
 
-    // basecircle2 Drawing
-    NSBezierPath *basecircle2Path = [NSBezierPath bezierPathWithOvalInRect: basecircle2Rect];
-    CGFloat basecircle2ResizeRatio = MIN(NSWidth(basecircle2Rect) / 13, NSHeight(basecircle2Rect) / 13);
-    [NSGraphicsContext saveGraphicsState];
-    [basecircle2Path addClip];
-    [gradientDown drawFromCenter: NSMakePoint(NSMidX(basecircle2Rect) + -0.98 * basecircle2ResizeRatio, NSMidY(basecircle2Rect) + -6.5 * basecircle2ResizeRatio) radius: 1.54 * basecircle2ResizeRatio
-        toCenter: NSMakePoint(NSMidX(basecircle2Rect) + -1.86 * basecircle2ResizeRatio, NSMidY(basecircle2Rect) + -8.73 * basecircle2ResizeRatio) radius: 8.65 * basecircle2ResizeRatio
-        options: NSGradientDrawsBeforeStartingLocation | NSGradientDrawsAfterEndingLocation];
-    [NSGraphicsContext restoreGraphicsState];
+    // Create path with appropriate corner rounding
+    NSBezierPath *path = [self buttonPathForRect:rect position:position];
 
-    // halfcircle Drawing
-    NSBezierPath *halfcirclePath = [NSBezierPath bezierPath];
-    [halfcirclePath moveToPoint: NSMakePoint(NSMinX(frame) + 0.93316 * NSWidth(frame), NSMinY(frame) + 0.46157 * NSHeight(frame))];
-    [halfcirclePath curveToPoint: NSMakePoint(NSMinX(frame) + 0.78652 * NSWidth(frame), NSMinY(frame) + 0.81548 * NSHeight(frame)) controlPoint1: NSMakePoint(NSMinX(frame) + 0.93316 * NSWidth(frame), NSMinY(frame) + 0.46157 * NSHeight(frame)) controlPoint2: NSMakePoint(NSMinX(frame) + 0.94476 * NSWidth(frame), NSMinY(frame) + 0.66376 * NSHeight(frame))];
-    [halfcirclePath curveToPoint: NSMakePoint(NSMinX(frame) + 0.21348 * NSWidth(frame), NSMinY(frame) + 0.81548 * NSHeight(frame)) controlPoint1: NSMakePoint(NSMinX(frame) + 0.62828 * NSWidth(frame), NSMinY(frame) + 0.96721 * NSHeight(frame)) controlPoint2: NSMakePoint(NSMinX(frame) + 0.37172 * NSWidth(frame), NSMinY(frame) + 0.96721 * NSHeight(frame))];
-    [halfcirclePath curveToPoint: NSMakePoint(NSMinX(frame) + 0.06684 * NSWidth(frame), NSMinY(frame) + 0.46157 * NSHeight(frame)) controlPoint1: NSMakePoint(NSMinX(frame) + 0.05524 * NSWidth(frame), NSMinY(frame) + 0.66376 * NSHeight(frame)) controlPoint2: NSMakePoint(NSMinX(frame) + 0.06684 * NSWidth(frame), NSMinY(frame) + 0.46157 * NSHeight(frame))];
-    [halfcirclePath lineToPoint: NSMakePoint(NSMinX(frame) + 0.93316 * NSWidth(frame), NSMinY(frame) + 0.46157 * NSHeight(frame))];
-    [halfcirclePath closePath];
-    [halfcirclePath setLineCapStyle: NSRoundLineCapStyle];
-    [halfcirclePath setLineJoinStyle: NSRoundLineJoinStyle];
-    [gradientUp drawInBezierPath: halfcirclePath angle: -90];
+    // Fill with gradient
+    [gradient drawInBezierPath:path angle:-90];
+
+    // Stroke border
+    [borderColor setStroke];
+    [path setLineWidth:1.0];
+    [path stroke];
+
+    // Draw divider for minimize button
+    if (position == TitleBarButtonPositionRightLeft) {
+        NSBezierPath *divider = [NSBezierPath bezierPath];
+        [divider moveToPoint:NSMakePoint(NSMaxX(rect), NSMinY(rect) + 4)];
+        [divider lineToPoint:NSMakePoint(NSMaxX(rect), NSMaxY(rect) - 4)];
+        [borderColor setStroke];
+        [divider setLineWidth:1.0];
+        [divider stroke];
+    }
+}
+
++ (NSBezierPath *)buttonPathForRect:(NSRect)frame position:(TitleBarButtonPosition)position {
+    CGFloat radius = BUTTON_INNER_RADIUS;
+    NSBezierPath *path = [NSBezierPath bezierPath];
+
+    switch (position) {
+        case TitleBarButtonPositionLeft:
+            // Close button: rounded on right side and top-left corner
+            [path moveToPoint:NSMakePoint(NSMinX(frame), NSMinY(frame))];
+            [path lineToPoint:NSMakePoint(NSMaxX(frame) - radius, NSMinY(frame))];
+            [path appendBezierPathWithArcWithCenter:NSMakePoint(NSMaxX(frame) - radius, NSMinY(frame) + radius)
+                                             radius:radius
+                                         startAngle:270
+                                           endAngle:0];
+            [path lineToPoint:NSMakePoint(NSMaxX(frame), NSMaxY(frame) - radius)];
+            [path appendBezierPathWithArcWithCenter:NSMakePoint(NSMaxX(frame) - radius, NSMaxY(frame) - radius)
+                                             radius:radius
+                                         startAngle:0
+                                           endAngle:90];
+            [path lineToPoint:NSMakePoint(NSMinX(frame) + radius, NSMaxY(frame))];
+            [path appendBezierPathWithArcWithCenter:NSMakePoint(NSMinX(frame) + radius, NSMaxY(frame) - radius)
+                                             radius:radius
+                                         startAngle:90
+                                           endAngle:180];
+            [path lineToPoint:NSMakePoint(NSMinX(frame), NSMinY(frame))];
+            [path closePath];
+            break;
+
+        case TitleBarButtonPositionRightLeft:
+            // Minimize button: rounded on left side only
+            [path moveToPoint:NSMakePoint(NSMinX(frame) + radius, NSMinY(frame))];
+            [path lineToPoint:NSMakePoint(NSMaxX(frame), NSMinY(frame))];
+            [path lineToPoint:NSMakePoint(NSMaxX(frame), NSMaxY(frame))];
+            [path lineToPoint:NSMakePoint(NSMinX(frame) + radius, NSMaxY(frame))];
+            [path appendBezierPathWithArcWithCenter:NSMakePoint(NSMinX(frame) + radius, NSMaxY(frame) - radius)
+                                             radius:radius
+                                         startAngle:90
+                                           endAngle:180];
+            [path lineToPoint:NSMakePoint(NSMinX(frame), NSMinY(frame) + radius)];
+            [path appendBezierPathWithArcWithCenter:NSMakePoint(NSMinX(frame) + radius, NSMinY(frame) + radius)
+                                             radius:radius
+                                         startAngle:180
+                                           endAngle:270];
+            [path closePath];
+            break;
+
+        case TitleBarButtonPositionRightRight:
+            // Maximize button: top-right corner rounded
+            [path moveToPoint:NSMakePoint(NSMinX(frame), NSMinY(frame))];
+            [path lineToPoint:NSMakePoint(NSMaxX(frame), NSMinY(frame))];
+            [path lineToPoint:NSMakePoint(NSMaxX(frame), NSMaxY(frame) - radius)];
+            [path appendBezierPathWithArcWithCenter:NSMakePoint(NSMaxX(frame) - radius, NSMaxY(frame) - radius)
+                                             radius:radius
+                                         startAngle:0
+                                           endAngle:90];
+            [path lineToPoint:NSMakePoint(NSMinX(frame), NSMaxY(frame))];
+            [path closePath];
+            break;
+    }
+
+    return path;
+}
+
+// Draw close icon (X)
++ (void)drawCloseIconInRect:(NSRect)rect withColor:(NSColor *)color {
+    NSBezierPath *path = [NSBezierPath bezierPath];
+    [path setLineWidth:ICON_STROKE];
+    [path setLineCapStyle:NSRoundLineCapStyle];
+
+    [path moveToPoint:NSMakePoint(NSMinX(rect), NSMinY(rect))];
+    [path lineToPoint:NSMakePoint(NSMaxX(rect), NSMaxY(rect))];
+    [path moveToPoint:NSMakePoint(NSMaxX(rect), NSMinY(rect))];
+    [path lineToPoint:NSMakePoint(NSMinX(rect), NSMaxY(rect))];
+
+    [color setStroke];
+    [path stroke];
+}
+
+// Draw minimize icon (down triangle)
++ (void)drawMinimizeIconInRect:(NSRect)rect withColor:(NSColor *)color {
+    NSBezierPath *path = [NSBezierPath bezierPath];
+    [path setLineWidth:ICON_STROKE];
+    [path setLineCapStyle:NSRoundLineCapStyle];
+    [path setLineJoinStyle:NSRoundLineJoinStyle];
+
+    [path moveToPoint:NSMakePoint(NSMinX(rect), NSMaxY(rect) - 2)];
+    [path lineToPoint:NSMakePoint(NSMidX(rect), NSMinY(rect) + 2)];
+    [path lineToPoint:NSMakePoint(NSMaxX(rect), NSMaxY(rect) - 2)];
+
+    [color setStroke];
+    [path stroke];
+}
+
+// Draw maximize icon (up triangle)
++ (void)drawMaximizeIconInRect:(NSRect)rect withColor:(NSColor *)color {
+    NSBezierPath *path = [NSBezierPath bezierPath];
+    [path setLineWidth:ICON_STROKE];
+    [path setLineCapStyle:NSRoundLineCapStyle];
+    [path setLineJoinStyle:NSRoundLineJoinStyle];
+
+    [path moveToPoint:NSMakePoint(NSMinX(rect), NSMinY(rect) + 2)];
+    [path lineToPoint:NSMakePoint(NSMidX(rect), NSMaxY(rect) - 2)];
+    [path lineToPoint:NSMakePoint(NSMaxX(rect), NSMinY(rect) + 2)];
+
+    [color setStroke];
+    [path stroke];
+}
+
+// Get icon color based on active/highlighted state
++ (NSColor *)iconColorForActive:(BOOL)active highlighted:(BOOL)highlighted {
+    NSColor *color;
+    if (active) {
+        color = [NSColor colorWithCalibratedRed:0.3 green:0.3 blue:0.3 alpha:1.0];
+    } else {
+        color = [NSColor colorWithCalibratedRed:0.5 green:0.5 blue:0.5 alpha:1.0];
+    }
+
+    if (highlighted) {
+        color = [color shadowWithLevel:0.2];
+    }
+
+    return color;
 }
 
 #pragma mark - Singleton Management
@@ -293,77 +397,47 @@ static NSMutableSet *fixedSizeWindows = nil;
                           state:state
                        andTitle:title ?: @""];
 
-        // Add properly positioned buttons using Eau theme specifications
-        // Based on Eau theme analysis: 17px spacing, LEFT-aligned (miniaturize first, then close)
-        float buttonSize = 13.0;
-        float buttonSpacing = 17.0;  // Eau theme uses 17px spacing per button
-        float topMargin = 6.0;        // Center vertically in 24px titlebar
-        float leftMargin = 2.0;       // Small margin from left edge
+        // Draw rectangular edge buttons: Close on left, Minimize+Maximize on right
+        NSColor *iconColor = [URSThemeIntegration iconColorForActive:isActive highlighted:NO];
 
-        if (styleMask & NSMiniaturizableWindowMask) {
-            NSButton *miniButton = [theme standardWindowButton:NSWindowMiniaturizeButton forStyleMask:styleMask];
-            if (miniButton) {
-                // Eau positions miniaturize button at LEFT edge (causes title to move right by 17px)
-                NSRect miniFrame = NSMakeRect(
-                    leftMargin,  // At left edge
-                    topMargin,
-                    buttonSize,
-                    buttonSize
-                );
-
-                NSImage *buttonImage = [miniButton image];
-                if (buttonImage) {
-                    [buttonImage drawInRect:miniFrame
-                                   fromRect:NSZeroRect
-                                  operation:NSCompositeSourceOver
-                                   fraction:1.0];
-                    NSLog(@"Drew miniaturize button at Eau LEFT position: %@", NSStringFromRect(miniFrame));
-                }
-            }
-        }
-
+        // Close button at left edge
         if (styleMask & NSClosableWindowMask) {
-            NSButton *closeButton = [theme standardWindowButton:NSWindowCloseButton forStyleMask:styleMask];
-            if (closeButton) {
-                // Position close button next to miniaturize button (causes title width to reduce by 17px)
-                NSRect closeFrame = NSMakeRect(
-                    leftMargin + buttonSpacing,  // 17px from left edge (after miniaturize)
-                    topMargin,
-                    buttonSize,
-                    buttonSize
-                );
-
-                NSImage *buttonImage = [closeButton image];
-                if (buttonImage) {
-                    [buttonImage drawInRect:closeFrame
-                                   fromRect:NSZeroRect
-                                  operation:NSCompositeSourceOver
-                                   fraction:1.0];
-                    NSLog(@"Drew close button at Eau LEFT position: %@", NSStringFromRect(closeFrame));
-                }
-            }
+            NSRect closeFrame = NSMakeRect(0, 0, EDGE_BUTTON_WIDTH, TITLEBAR_HEIGHT);
+            [URSThemeIntegration drawEdgeButtonInRect:closeFrame
+                                             position:TitleBarButtonPositionLeft
+                                               active:isActive
+                                          highlighted:NO];
+            NSRect iconRect = NSInsetRect(closeFrame, ICON_INSET, ICON_INSET);
+            [URSThemeIntegration drawCloseIconInRect:iconRect withColor:iconColor];
+            NSLog(@"Drew close button at: %@", NSStringFromRect(closeFrame));
         }
 
-        if (styleMask & NSResizableWindowMask) {
-            NSButton *zoomButton = [theme standardWindowButton:NSWindowZoomButton forStyleMask:styleMask];
-            if (zoomButton) {
-                // Position zoom button after close button
-                NSRect zoomFrame = NSMakeRect(
-                    leftMargin + (2 * buttonSpacing),  // 34px from left edge
-                    topMargin,
-                    buttonSize,
-                    buttonSize
-                );
+        // Minimize button at left side of right region
+        if (styleMask & NSMiniaturizableWindowMask) {
+            CGFloat buttonWidth = RIGHT_REGION_WIDTH / 2.0;
+            NSRect miniFrame = NSMakeRect(titlebarSize.width - RIGHT_REGION_WIDTH, 0,
+                                          buttonWidth, TITLEBAR_HEIGHT);
+            [URSThemeIntegration drawEdgeButtonInRect:miniFrame
+                                             position:TitleBarButtonPositionRightLeft
+                                               active:isActive
+                                          highlighted:NO];
+            NSRect iconRect = NSInsetRect(miniFrame, ICON_INSET, ICON_INSET);
+            [URSThemeIntegration drawMinimizeIconInRect:iconRect withColor:iconColor];
+            NSLog(@"Drew miniaturize button at: %@", NSStringFromRect(miniFrame));
+        }
 
-                NSImage *buttonImage = [zoomButton image];
-                if (buttonImage) {
-                    [buttonImage drawInRect:zoomFrame
-                                   fromRect:NSZeroRect
-                                  operation:NSCompositeSourceOver
-                                   fraction:1.0];
-                    NSLog(@"Drew zoom button at Eau LEFT position: %@", NSStringFromRect(zoomFrame));
-                }
-            }
+        // Maximize button at right side of right region
+        if (styleMask & NSResizableWindowMask) {
+            CGFloat buttonWidth = RIGHT_REGION_WIDTH / 2.0;
+            NSRect zoomFrame = NSMakeRect(titlebarSize.width - buttonWidth, 0,
+                                          buttonWidth, TITLEBAR_HEIGHT);
+            [URSThemeIntegration drawEdgeButtonInRect:zoomFrame
+                                             position:TitleBarButtonPositionRightRight
+                                               active:isActive
+                                          highlighted:NO];
+            NSRect iconRect = NSInsetRect(zoomFrame, ICON_INSET, ICON_INSET);
+            [URSThemeIntegration drawMaximizeIconInRect:iconRect withColor:iconColor];
+            NSLog(@"Drew zoom button at: %@", NSStringFromRect(zoomFrame));
         }
 
         [titlebarImage unlockFocus];
@@ -884,107 +958,65 @@ static NSMutableSet *fixedSizeWindows = nil;
         [gctx restoreGraphicsState];
 
         // *** BUTTON DRAWING ***
-        // Get button positions using theme's methods, then draw using theme-appropriate style
-        // Eau theme positions buttons on LEFT: Close, Mini, Zoom
-        // Base GSTheme positions Close on RIGHT
-        
-        BOOL isEauTheme = [[theme name] isEqualToString:@"Eau"];
-        NSLog(@"Drawing buttons for theme: %@ (isEau=%d)", [theme name], isEauTheme);
-        
-        // Button size and spacing for Eau
-        CGFloat buttonSize = 15.0;
-        CGFloat buttonSpacing = 4.0;
-        CGFloat leftPadding = 10.5;
-        CGFloat topPadding = 5.5;
-        
-        // Eau button colors
-        NSColor *closeColor = [NSColor colorWithCalibratedRed:0.97 green:0.26 blue:0.23 alpha:1.0];
-        NSColor *miniColor = [NSColor colorWithCalibratedRed:0.9 green:0.7 blue:0.3 alpha:1.0];
-        NSColor *zoomColor = [NSColor colorWithCalibratedRed:0.322 green:0.778 blue:0.244 alpha:1.0];
+        // Draw rectangular edge buttons: Close on left, Minimize+Maximize on right
 
+        NSLog(@"Drawing edge buttons for theme: %@", [theme name]);
+
+        CGFloat titlebarWidth = titlebarSize.width;
+        NSColor *iconColor = [self iconColorForActive:isActive highlighted:NO];
+
+        // Close button at left edge
         if (styleMask & NSClosableWindowMask) {
-            NSRect closeFrame;
-            if (isEauTheme) {
-                // Eau: Close button is first on LEFT
-                closeFrame = NSMakeRect(leftPadding, 
-                                        titleBarRect.size.height - buttonSize - topPadding,
-                                        buttonSize, buttonSize);
-            } else {
-                closeFrame = [theme closeButtonFrameForBounds:drawRect];
-            }
-            
-            // Draw button ball (Eau-style) or just the image (other themes)
-            if (isEauTheme) {
-                [URSThemeIntegration drawEauButtonBall:closeFrame withColor:closeColor];
-            }
-            
-            // Draw button icon
-            NSImage *closeImage = [NSImage imageNamed:@"common_Close"];
-            if (closeImage) {
-                NSRect imageRect = NSMakeRect(
-                    closeFrame.origin.x + (closeFrame.size.width - closeImage.size.width) / 2,
-                    closeFrame.origin.y + (closeFrame.size.height - closeImage.size.height) / 2,
-                    closeImage.size.width, closeImage.size.height);
-                [closeImage drawInRect:imageRect fromRect:NSZeroRect 
-                             operation:NSCompositeSourceOver fraction:1.0];
-            }
+            NSRect closeFrame = NSMakeRect(0, 0, EDGE_BUTTON_WIDTH, TITLEBAR_HEIGHT);
+
+            // Draw button background
+            [self drawEdgeButtonInRect:closeFrame
+                              position:TitleBarButtonPositionLeft
+                                active:isActive
+                           highlighted:NO];
+
+            // Draw X icon
+            NSRect iconRect = NSInsetRect(closeFrame, ICON_INSET, ICON_INSET);
+            [self drawCloseIconInRect:iconRect withColor:iconColor];
+
             NSLog(@"Drew close button at: %@", NSStringFromRect(closeFrame));
         }
 
+        // Minimize button at left side of right region
         if (styleMask & NSMiniaturizableWindowMask) {
-            NSRect miniFrame;
-            if (isEauTheme) {
-                // Eau: Mini button is second on LEFT
-                miniFrame = NSMakeRect(leftPadding + buttonSize + buttonSpacing,
-                                       titleBarRect.size.height - buttonSize - topPadding,
-                                       buttonSize, buttonSize);
-            } else {
-                miniFrame = [theme miniaturizeButtonFrameForBounds:drawRect];
-            }
-            
-            if (isEauTheme) {
-                [URSThemeIntegration drawEauButtonBall:miniFrame withColor:miniColor];
-            }
-            
-            NSImage *miniImage = [NSImage imageNamed:@"common_Miniaturize"];
-            if (miniImage) {
-                NSRect imageRect = NSMakeRect(
-                    miniFrame.origin.x + (miniFrame.size.width - miniImage.size.width) / 2,
-                    miniFrame.origin.y + (miniFrame.size.height - miniImage.size.height) / 2,
-                    miniImage.size.width, miniImage.size.height);
-                [miniImage drawInRect:imageRect fromRect:NSZeroRect
-                            operation:NSCompositeSourceOver fraction:1.0];
-            }
+            CGFloat buttonWidth = RIGHT_REGION_WIDTH / 2.0;
+            NSRect miniFrame = NSMakeRect(titlebarWidth - RIGHT_REGION_WIDTH, 0,
+                                          buttonWidth, TITLEBAR_HEIGHT);
+
+            // Draw button background
+            [self drawEdgeButtonInRect:miniFrame
+                              position:TitleBarButtonPositionRightLeft
+                                active:isActive
+                           highlighted:NO];
+
+            // Draw down-triangle icon
+            NSRect iconRect = NSInsetRect(miniFrame, ICON_INSET, ICON_INSET);
+            [self drawMinimizeIconInRect:iconRect withColor:iconColor];
+
             NSLog(@"Drew miniaturize button at: %@", NSStringFromRect(miniFrame));
         }
 
+        // Maximize button at right side of right region
         if (styleMask & NSResizableWindowMask) {
-            NSRect zoomFrame;
-            if (isEauTheme) {
-                // Eau: Zoom button is third on LEFT
-                zoomFrame = NSMakeRect(leftPadding + (buttonSize + buttonSpacing) * 2,
-                                       titleBarRect.size.height - buttonSize - topPadding,
-                                       buttonSize, buttonSize);
-            } else {
-                // Calculate based on miniaturize button
-                NSRect miniFrame = [theme miniaturizeButtonFrameForBounds:drawRect];
-                zoomFrame = NSMakeRect(miniFrame.origin.x + miniFrame.size.width + 4,
-                                       miniFrame.origin.y, miniFrame.size.width, miniFrame.size.height);
-            }
-            
-            if (isEauTheme) {
-                [URSThemeIntegration drawEauButtonBall:zoomFrame withColor:zoomColor];
-            }
-            
-            NSImage *zoomImage = [NSImage imageNamed:@"common_Zoom"];
-            if (zoomImage) {
-                NSRect imageRect = NSMakeRect(
-                    zoomFrame.origin.x + (zoomFrame.size.width - zoomImage.size.width) / 2,
-                    zoomFrame.origin.y + (zoomFrame.size.height - zoomImage.size.height) / 2,
-                    zoomImage.size.width, zoomImage.size.height);
-                [zoomImage drawInRect:imageRect fromRect:NSZeroRect
-                            operation:NSCompositeSourceOver fraction:1.0];
-            }
+            CGFloat buttonWidth = RIGHT_REGION_WIDTH / 2.0;
+            NSRect zoomFrame = NSMakeRect(titlebarWidth - buttonWidth, 0,
+                                          buttonWidth, TITLEBAR_HEIGHT);
+
+            // Draw button background
+            [self drawEdgeButtonInRect:zoomFrame
+                              position:TitleBarButtonPositionRightRight
+                                active:isActive
+                           highlighted:NO];
+
+            // Draw up-triangle icon
+            NSRect iconRect = NSInsetRect(zoomFrame, ICON_INSET, ICON_INSET);
+            [self drawMaximizeIconInRect:iconRect withColor:iconColor];
+
             NSLog(@"Drew zoom button at: %@", NSStringFromRect(zoomFrame));
         }
 
