@@ -101,63 +101,8 @@
                       state:state
                    andTitle:title ?: @""];
 
-    // Add properly positioned buttons using Eau theme specifications
-    // Based on Eau theme analysis: 17px spacing, LEFT-aligned (miniaturize first, then close)
-    float buttonSize = 13.0;
-    float buttonSpacing = 17.0;  // Eau theme uses 17px spacing per button
-    float topMargin = 6.0;        // Center vertically in 24px titlebar
-    float leftMargin = 2.0;       // Small margin from left edge
-
-    if (styleMask & NSMiniaturizableWindowMask) {
-        NSButton *miniButton = [theme standardWindowButton:NSWindowMiniaturizeButton forStyleMask:styleMask];
-        if (miniButton && [miniButton image]) {
-            // Eau positions miniaturize button at LEFT edge (causes title to move right by 17px)
-            NSRect miniFrame = NSMakeRect(
-                leftMargin,  // At left edge
-                topMargin,
-                buttonSize,
-                buttonSize
-            );
-            [[miniButton image] drawInRect:miniFrame
-                                  fromRect:NSZeroRect
-                                 operation:NSCompositeSourceOver
-                                  fraction:1.0];
-        }
-    }
-
-    if (styleMask & NSClosableWindowMask) {
-        NSButton *closeButton = [theme standardWindowButton:NSWindowCloseButton forStyleMask:styleMask];
-        if (closeButton && [closeButton image]) {
-            // Position close button next to miniaturize button (causes title width to reduce by 17px)
-            NSRect closeFrame = NSMakeRect(
-                leftMargin + buttonSpacing,  // 17px from left edge (after miniaturize)
-                topMargin,
-                buttonSize,
-                buttonSize
-            );
-            [[closeButton image] drawInRect:closeFrame
-                                   fromRect:NSZeroRect
-                                  operation:NSCompositeSourceOver
-                                   fraction:1.0];
-        }
-    }
-
-    if (styleMask & NSResizableWindowMask) {
-        NSButton *zoomButton = [theme standardWindowButton:NSWindowZoomButton forStyleMask:styleMask];
-        if (zoomButton && [zoomButton image]) {
-            // Position zoom button after close button
-            NSRect zoomFrame = NSMakeRect(
-                leftMargin + (2 * buttonSpacing),  // 34px from left edge
-                topMargin,
-                buttonSize,
-                buttonSize
-            );
-            [[zoomButton image] drawInRect:zoomFrame
-                                  fromRect:NSZeroRect
-                                 operation:NSCompositeSourceOver
-                                  fraction:1.0];
-        }
-    }
+    // Edge buttons are drawn by the theme itself through standardWindowButton calls
+    // The actual button drawing is handled in the theme's button cells
 
     [image unlockFocus];
 
@@ -255,26 +200,35 @@
 
 #pragma mark - Button Hit Detection
 
+// Edge button metrics (matching Eau theme)
+static const CGFloat TB_HEIGHT = 24.0;
+static const CGFloat TB_EDGE_BUTTON_WIDTH = 28.0;
+static const CGFloat TB_RIGHT_REGION_WIDTH = 56.0;
+
 - (GSThemeTitleBarButton)buttonAtPoint:(NSPoint)point {
-    // Button layout constants (must match createGSThemeImage:)
-    float buttonSize = 13.0;
-    float buttonSpacing = 17.0;
-    float topMargin = 6.0;
-    float leftMargin = 2.0;
+    // Get titlebar width
+    XCBRect titlebarRect = [self windowRect];
+    CGFloat titlebarWidth = titlebarRect.size.width;
 
     NSUInteger styleMask = [self windowStyleMask];
 
-    // Define button rects (order: miniaturize, close, zoom)
-    NSRect miniaturizeRect = NSMakeRect(leftMargin, topMargin, buttonSize, buttonSize);
-    NSRect closeRect = NSMakeRect(leftMargin + buttonSpacing, topMargin, buttonSize, buttonSize);
-    NSRect zoomRect = NSMakeRect(leftMargin + (2 * buttonSpacing), topMargin, buttonSize, buttonSize);
+    // Close button at left edge (x=0 to EDGE_BUTTON_WIDTH)
+    NSRect closeRect = NSMakeRect(0, 0, TB_EDGE_BUTTON_WIDTH, TB_HEIGHT);
+
+    // Minimize button at left side of right region
+    CGFloat rightRegionX = titlebarWidth - TB_RIGHT_REGION_WIDTH;
+    CGFloat buttonWidth = TB_RIGHT_REGION_WIDTH / 2.0;
+    NSRect miniaturizeRect = NSMakeRect(rightRegionX, 0, buttonWidth, TB_HEIGHT);
+
+    // Maximize button at right side of right region
+    NSRect zoomRect = NSMakeRect(titlebarWidth - buttonWidth, 0, buttonWidth, TB_HEIGHT);
 
     // Check which button was clicked (if any)
-    if ((styleMask & NSMiniaturizableWindowMask) && NSPointInRect(point, miniaturizeRect)) {
-        return GSThemeTitleBarButtonMiniaturize;
-    }
     if ((styleMask & NSClosableWindowMask) && NSPointInRect(point, closeRect)) {
         return GSThemeTitleBarButtonClose;
+    }
+    if ((styleMask & NSMiniaturizableWindowMask) && NSPointInRect(point, miniaturizeRect)) {
+        return GSThemeTitleBarButtonMiniaturize;
     }
     if ((styleMask & NSResizableWindowMask) && NSPointInRect(point, zoomRect)) {
         return GSThemeTitleBarButtonZoom;
