@@ -2099,6 +2099,43 @@ static XCBConnection *sharedInstance;
 
     NSLog(@"Atom name: %@, for atom id: %u", atomMessageName, anEvent->type);
 
+    // Handle Gershwin-specific window commands
+    if ([atomMessageName isEqualToString:@"_GERSHWIN_CENTER_WINDOW"]) {
+        NSLog(@"[ClientMessage] Center Window requested");
+        [self centerActiveWindow];
+        return;
+    }
+    if ([atomMessageName isEqualToString:@"_GERSHWIN_TILE_LEFT"]) {
+        NSLog(@"[ClientMessage] Tile Left requested");
+        [self tileActiveWindowLeft];
+        return;
+    }
+    if ([atomMessageName isEqualToString:@"_GERSHWIN_TILE_RIGHT"]) {
+        NSLog(@"[ClientMessage] Tile Right requested");
+        [self tileActiveWindowRight];
+        return;
+    }
+    if ([atomMessageName isEqualToString:@"_GERSHWIN_TILE_TOP_LEFT"]) {
+        NSLog(@"[ClientMessage] Tile Top Left requested");
+        [self tileActiveWindowToZone:SnapZoneTopLeft];
+        return;
+    }
+    if ([atomMessageName isEqualToString:@"_GERSHWIN_TILE_TOP_RIGHT"]) {
+        NSLog(@"[ClientMessage] Tile Top Right requested");
+        [self tileActiveWindowToZone:SnapZoneTopRight];
+        return;
+    }
+    if ([atomMessageName isEqualToString:@"_GERSHWIN_TILE_BOTTOM_LEFT"]) {
+        NSLog(@"[ClientMessage] Tile Bottom Left requested");
+        [self tileActiveWindowToZone:SnapZoneBottomLeft];
+        return;
+    }
+    if ([atomMessageName isEqualToString:@"_GERSHWIN_TILE_BOTTOM_RIGHT"]) {
+        NSLog(@"[ClientMessage] Tile Bottom Right requested");
+        [self tileActiveWindowToZone:SnapZoneBottomRight];
+        return;
+    }
+
     XCBWindow *window;
     XCBTitleBar *titleBar;
     XCBFrame *frame;
@@ -2993,6 +3030,11 @@ static XCBConnection *sharedInstance;
     // Ensure workarea is cached if not already valid
     if (!self.workareaValid) {
         XCBScreen *screen = [frame screen];
+        if (!screen) {
+            // Fallback: use first screen if frame doesn't have one
+            screen = [screens firstObject];
+            NSLog(@"[Snap] ensureWorkareaCache: frame has no screen, using first screen");
+        }
         if (screen) {
             XCBWindow *rootWindow = [screen rootWindow];
             EWMHService *ewmhService = [EWMHService sharedInstanceWithConnection:self];
@@ -3049,6 +3091,214 @@ static XCBConnection *sharedInstance;
 
     [frame programmaticResizeToRect:target];
     [frame setMaximizedHorizontally:YES];
+    [frame updateAllResizeZonePositions];
+    [frame applyRoundedCornersShapeMask];
+
+    [self flush];
+}
+
+#pragma mark - Window Tiling
+
+- (void)executeSnapForZone:(SnapZone)zone frame:(XCBFrame *)frame {
+    if (!frame || zone == SnapZoneNone) {
+        NSLog(@"[Snap] executeSnapForZone: no frame or zone is None");
+        return;
+    }
+
+    [self ensureWorkareaCache:frame];
+    NSLog(@"[Snap] executeSnapForZone: zone=%ld workarea=(%d,%d,%u,%u) valid=%d",
+          (long)zone, _cachedWorkareaX, _cachedWorkareaY,
+          _cachedWorkareaWidth, _cachedWorkareaHeight, self.workareaValid);
+
+    // Save current rect for restore
+    [frame setOldRect:[frame windowRect]];
+
+    XCBRect targetRect;
+    switch (zone) {
+        case SnapZoneTop:
+            // Full maximize
+            targetRect = XCBMakeRect(
+                XCBMakePoint(_cachedWorkareaX, _cachedWorkareaY),
+                XCBMakeSize(_cachedWorkareaWidth, _cachedWorkareaHeight));
+            [frame setIsMaximized:YES];
+            NSLog(@"[Snap] Maximizing window to workarea");
+            break;
+
+        case SnapZoneLeft:
+            // Left half of screen
+            targetRect = XCBMakeRect(
+                XCBMakePoint(_cachedWorkareaX, _cachedWorkareaY),
+                XCBMakeSize(_cachedWorkareaWidth / 2, _cachedWorkareaHeight));
+            NSLog(@"[Snap] Tiling window to left half");
+            break;
+
+        case SnapZoneRight:
+            // Right half of screen
+            targetRect = XCBMakeRect(
+                XCBMakePoint(_cachedWorkareaX + _cachedWorkareaWidth / 2, _cachedWorkareaY),
+                XCBMakeSize(_cachedWorkareaWidth / 2, _cachedWorkareaHeight));
+            NSLog(@"[Snap] Tiling window to right half");
+            break;
+
+        case SnapZoneTopLeft:
+            // Top-left quarter
+            targetRect = XCBMakeRect(
+                XCBMakePoint(_cachedWorkareaX, _cachedWorkareaY),
+                XCBMakeSize(_cachedWorkareaWidth / 2, _cachedWorkareaHeight / 2));
+            NSLog(@"[Snap] Tiling window to top-left quarter");
+            break;
+
+        case SnapZoneTopRight:
+            // Top-right quarter
+            targetRect = XCBMakeRect(
+                XCBMakePoint(_cachedWorkareaX + _cachedWorkareaWidth / 2, _cachedWorkareaY),
+                XCBMakeSize(_cachedWorkareaWidth / 2, _cachedWorkareaHeight / 2));
+            NSLog(@"[Snap] Tiling window to top-right quarter");
+            break;
+
+        case SnapZoneBottomLeft:
+            // Bottom-left quarter
+            targetRect = XCBMakeRect(
+                XCBMakePoint(_cachedWorkareaX, _cachedWorkareaY + _cachedWorkareaHeight / 2),
+                XCBMakeSize(_cachedWorkareaWidth / 2, _cachedWorkareaHeight / 2));
+            NSLog(@"[Snap] Tiling window to bottom-left quarter");
+            break;
+
+        case SnapZoneBottomRight:
+            // Bottom-right quarter
+            targetRect = XCBMakeRect(
+                XCBMakePoint(_cachedWorkareaX + _cachedWorkareaWidth / 2, _cachedWorkareaY + _cachedWorkareaHeight / 2),
+                XCBMakeSize(_cachedWorkareaWidth / 2, _cachedWorkareaHeight / 2));
+            NSLog(@"[Snap] Tiling window to bottom-right quarter");
+            break;
+
+        default:
+            NSLog(@"[Snap] Unknown snap zone: %ld", (long)zone);
+            return;
+    }
+
+    [frame programmaticResizeToRect:targetRect];
+    [frame updateAllResizeZonePositions];
+    [frame applyRoundedCornersShapeMask];
+
+    [self flush];
+}
+
+- (XCBFrame *)getActiveFrame {
+    // Read _NET_ACTIVE_WINDOW from root window to find the active window
+    EWMHService *ewmhService = [EWMHService sharedInstanceWithConnection:self];
+    XCBScreen *screen = [screens firstObject];
+    if (!screen) {
+        return nil;
+    }
+
+    XCBWindow *rootWindow = [screen rootWindow];
+    if (!rootWindow) {
+        return nil;
+    }
+
+    // Query _NET_ACTIVE_WINDOW property
+    xcb_get_property_reply_t *reply = (xcb_get_property_reply_t *)[ewmhService getProperty:[ewmhService EWMHActiveWindow]
+                                                                              propertyType:XCB_ATOM_WINDOW
+                                                                                 forWindow:rootWindow
+                                                                                    delete:NO
+                                                                                    length:1];
+    if (!reply || reply->type == XCB_ATOM_NONE || xcb_get_property_value_length(reply) == 0) {
+        if (reply) free(reply);
+        return nil;
+    }
+
+    xcb_window_t *activeWindowId = (xcb_window_t *)xcb_get_property_value(reply);
+    xcb_window_t windowId = *activeWindowId;
+    free(reply);
+
+    if (windowId == XCB_WINDOW_NONE) {
+        return nil;
+    }
+
+    // Find the window in our map
+    XCBWindow *activeWindow = [self windowForXCBId:windowId];
+    if (!activeWindow) {
+        return nil;
+    }
+
+    // Get the frame
+    XCBFrame *frame = nil;
+    if ([activeWindow isKindOfClass:[XCBFrame class]]) {
+        frame = (XCBFrame *)activeWindow;
+    } else if ([[activeWindow parentWindow] isKindOfClass:[XCBFrame class]]) {
+        frame = (XCBFrame *)[activeWindow parentWindow];
+    }
+
+    return frame;
+}
+
+- (void)tileActiveWindowLeft {
+    XCBFrame *frame = [self getActiveFrame];
+
+    if (!frame) {
+        NSLog(@"[Tile] No active window to tile");
+        return;
+    }
+
+    [self executeSnapForZone:SnapZoneLeft frame:frame];
+}
+
+- (void)tileActiveWindowRight {
+    XCBFrame *frame = [self getActiveFrame];
+
+    if (!frame) {
+        NSLog(@"[Tile] No active window to tile");
+        return;
+    }
+
+    [self executeSnapForZone:SnapZoneRight frame:frame];
+}
+
+- (void)tileActiveWindowToZone:(SnapZone)zone {
+    XCBFrame *frame = [self getActiveFrame];
+
+    if (!frame) {
+        NSLog(@"[Tile] No active window to tile");
+        return;
+    }
+
+    [self executeSnapForZone:zone frame:frame];
+}
+
+- (void)centerActiveWindow {
+    XCBFrame *frame = [self getActiveFrame];
+
+    if (!frame) {
+        NSLog(@"[Center] No active window to center");
+        return;
+    }
+
+    [self ensureWorkareaCache:frame];
+
+    // Get current window size
+    XCBRect currentRect = [frame windowRect];
+    uint32_t windowWidth = currentRect.size.width;
+    uint32_t windowHeight = currentRect.size.height;
+
+    // Calculate centered position
+    int32_t centerX = _cachedWorkareaX + (_cachedWorkareaWidth - windowWidth) / 2;
+    int32_t centerY = _cachedWorkareaY + (_cachedWorkareaHeight - windowHeight) / 2;
+
+    // Ensure window stays within workarea
+    if (centerX < _cachedWorkareaX) centerX = _cachedWorkareaX;
+    if (centerY < _cachedWorkareaY) centerY = _cachedWorkareaY;
+
+    XCBRect targetRect = XCBMakeRect(
+        XCBMakePoint(centerX, centerY),
+        XCBMakeSize(windowWidth, windowHeight));
+
+    NSLog(@"[Center] Centering window to (%d, %d)", centerX, centerY);
+
+    // Save current rect for restore
+    [frame setOldRect:currentRect];
+
+    [frame programmaticResizeToRect:targetRect];
     [frame updateAllResizeZonePositions];
     [frame applyRoundedCornersShapeMask];
 

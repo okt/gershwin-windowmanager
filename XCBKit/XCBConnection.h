@@ -24,6 +24,18 @@
 #define CLIENTLISTSIZE 1000
 #define WINDOWSMAPUPDATED @"windowsMapUpdated"
 
+// Snap zone types for window tiling
+typedef NS_ENUM(NSInteger, SnapZone) {
+    SnapZoneNone = 0,
+    SnapZoneTop,         // Maximize window
+    SnapZoneLeft,        // Snap to left half
+    SnapZoneRight,       // Snap to right half
+    SnapZoneTopLeft,     // Snap to top-left quarter
+    SnapZoneTopRight,    // Snap to top-right quarter
+    SnapZoneBottomLeft,  // Snap to bottom-left quarter
+    SnapZoneBottomRight  // Snap to bottom-right quarter
+};
+
 @class XCBWindow;
 @class EWMHService;
 @class XCBAtomService;
@@ -140,4 +152,13 @@
 - (void) setCurrentTime:(xcb_timestamp_t)time;
 - (XCBWindow*) rootWindowForScreenNumber:(int)number;
 - (xcb_window_t*) clientList;
+
+/*** WINDOW TILING ***/
+
+- (void)centerActiveWindow;
+- (void)tileActiveWindowLeft;
+- (void)tileActiveWindowRight;
+- (void)tileActiveWindowToZone:(SnapZone)zone;
+- (void)executeSnapForZone:(SnapZone)zone frame:(XCBFrame *)frame;
+
 @end
