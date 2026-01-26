@@ -1622,9 +1622,11 @@
             return;
         }
 
-        // Get titlebar width and determine if it has maximize button
+        // Get titlebar dimensions and determine if it has maximize button
         XCBRect frameRect = [frame windowRect];
+        XCBRect titlebarRect = [titlebar windowRect];
         CGFloat titlebarWidth = frameRect.size.width;
+        CGFloat titlebarHeight = titlebarRect.size.height;
 
         // Check if this is a fixed-size window (no maximize button)
         XCBWindow *clientWindow = [frame childWindowForKey:ClientWindow];
@@ -1632,9 +1634,13 @@
         BOOL hasMaximize = clientWindowId ? ![URSThemeIntegration isFixedSizeWindow:clientWindowId] : YES;
 
         // Determine which button (if any) is under the cursor
+        // Use both X and Y coordinates for stacked button layout
         CGFloat mouseX = motionEvent->event_x;
+        CGFloat mouseY = motionEvent->event_y;
         NSInteger newButtonIndex = [URSThemeIntegration buttonIndexAtX:mouseX
+                                                                     y:mouseY
                                                               forWidth:titlebarWidth
+                                                                height:titlebarHeight
                                                            hasMaximize:hasMaximize];
 
         // Check if hover state changed
@@ -1785,12 +1791,13 @@
 
 #pragma mark - Titlebar Button Handling
 
-// Button hit detection for edge-style titlebar buttons
-// Layout: Close at left edge, Minimize+Maximize at right edge
+// Button hit detection for stacked titlebar buttons
+// Layout: Close (X) at left edge full height, stacked Zoom (+) top / Minimize (-) bottom at right
 - (GSThemeTitleBarButton)buttonAtPoint:(NSPoint)point forTitlebar:(XCBTitleBar*)titlebar {
-    // Edge button metrics (must match URSThemeIntegration.m and AppearanceMetrics.h)
-    static const CGFloat EDGE_BUTTON_WIDTH = 22.0;
-    static const CGFloat RIGHT_REGION_WIDTH = 44.0;  // 2 × 22
+    // Stacked button metrics (must match URSThemeIntegration.m)
+    static const CGFloat EDGE_BUTTON_WIDTH = 28.0;       // Close button width
+    static const CGFloat STACKED_REGION_WIDTH = 28.0;    // Width for stacked buttons
+    static const CGFloat STACKED_BUTTON_HEIGHT = 12.0;   // Half of titlebar height
 
     // Get titlebar dimensions
     XCBRect titlebarRect = [titlebar windowRect];
@@ -1812,7 +1819,7 @@
     NSLog(@"GSTheme: Button hit test at point (%.0f, %.0f), titlebar size: %.0fx%.0f, hasMaximize: %d",
           point.x, point.y, titlebarWidth, titlebarHeight, hasMaximize);
 
-    // Close button at left edge
+    // Close button at left edge (full height)
     NSRect closeRect = NSMakeRect(0, 0, EDGE_BUTTON_WIDTH, titlebarHeight);
 
     // Check close button first (left edge)
@@ -1821,28 +1828,28 @@
         return GSThemeTitleBarButtonClose;
     }
 
-    // Right edge button position
-    NSRect rightEdgeRect = NSMakeRect(titlebarWidth - EDGE_BUTTON_WIDTH, 0,
-                                      EDGE_BUTTON_WIDTH, titlebarHeight);
+    // Stacked buttons on right edge
+    CGFloat stackedRegionStart = titlebarWidth - STACKED_REGION_WIDTH;
 
-    if (hasMaximize) {
-        // Window has both minimize and maximize
-        // Minimize at left of right region
-        NSRect miniaturizeRect = NSMakeRect(titlebarWidth - RIGHT_REGION_WIDTH, 0,
-                                            EDGE_BUTTON_WIDTH, titlebarHeight);
+    if (point.x >= stackedRegionStart && point.x <= titlebarWidth) {
+        if (hasMaximize) {
+            // Window has both zoom and minimize stacked vertically
+            // Zoom (+) on top half, Minimize (-) on bottom half
+            // X11 coordinates: Y=0 is at TOP, so y < midY means top half
+            CGFloat midY = titlebarHeight / 2.0;
 
-        if (NSPointInRect(point, rightEdgeRect)) {
-            NSLog(@"GSTheme: Hit zoom button");
-            return GSThemeTitleBarButtonZoom;
-        }
-        if (NSPointInRect(point, miniaturizeRect)) {
-            NSLog(@"GSTheme: Hit miniaturize button");
-            return GSThemeTitleBarButtonMiniaturize;
-        }
-    } else {
-        // Window has only minimize (no maximize) - minimize is at right edge
-        if (NSPointInRect(point, rightEdgeRect)) {
-            NSLog(@"GSTheme: Hit miniaturize button (at edge, no zoom)");
+            if (point.y < midY) {
+                // Top half (Y=0 to midY) = Zoom button
+                NSLog(@"GSTheme: Hit zoom button (top of stacked)");
+                return GSThemeTitleBarButtonZoom;
+            } else {
+                // Bottom half (Y=midY to height) = Minimize button
+                NSLog(@"GSTheme: Hit miniaturize button (bottom of stacked)");
+                return GSThemeTitleBarButtonMiniaturize;
+            }
+        } else {
+            // Window has only minimize (no maximize) - minimize takes full height
+            NSLog(@"GSTheme: Hit miniaturize button (full height, no zoom)");
             return GSThemeTitleBarButtonMiniaturize;
         }
     }

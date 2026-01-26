@@ -203,35 +203,36 @@
 // Edge button metrics (matching Eau theme)
 static const CGFloat TB_HEIGHT = 24.0;
 static const CGFloat TB_EDGE_BUTTON_WIDTH = 28.0;
-static const CGFloat TB_RIGHT_REGION_WIDTH = 56.0;
+static const CGFloat TB_STACKED_REGION_WIDTH = 28.0;
+static const CGFloat TB_STACKED_BUTTON_HEIGHT = 12.0;
 
 - (GSThemeTitleBarButton)buttonAtPoint:(NSPoint)point {
-    // Get titlebar width
     XCBRect titlebarRect = [self windowRect];
     CGFloat titlebarWidth = titlebarRect.size.width;
-
     NSUInteger styleMask = [self windowStyleMask];
 
-    // Close button at left edge (x=0 to EDGE_BUTTON_WIDTH)
+    // Close button at left edge
     NSRect closeRect = NSMakeRect(0, 0, TB_EDGE_BUTTON_WIDTH, TB_HEIGHT);
 
-    // Minimize button at left side of right region
-    CGFloat rightRegionX = titlebarWidth - TB_RIGHT_REGION_WIDTH;
-    CGFloat buttonWidth = TB_RIGHT_REGION_WIDTH / 2.0;
-    NSRect miniaturizeRect = NSMakeRect(rightRegionX, 0, buttonWidth, TB_HEIGHT);
+    // Stacked region on right
+    CGFloat rightRegionX = titlebarWidth - TB_STACKED_REGION_WIDTH;
 
-    // Maximize button at right side of right region
-    NSRect zoomRect = NSMakeRect(titlebarWidth - buttonWidth, 0, buttonWidth, TB_HEIGHT);
+    // Zoom button (top half)
+    NSRect zoomRect = NSMakeRect(rightRegionX, TB_STACKED_BUTTON_HEIGHT,
+                                  TB_STACKED_REGION_WIDTH, TB_STACKED_BUTTON_HEIGHT);
 
-    // Check which button was clicked (if any)
+    // Minimize button (bottom half)
+    NSRect miniaturizeRect = NSMakeRect(rightRegionX, 0,
+                                         TB_STACKED_REGION_WIDTH, TB_STACKED_BUTTON_HEIGHT);
+
     if ((styleMask & NSClosableWindowMask) && NSPointInRect(point, closeRect)) {
         return GSThemeTitleBarButtonClose;
     }
-    if ((styleMask & NSMiniaturizableWindowMask) && NSPointInRect(point, miniaturizeRect)) {
-        return GSThemeTitleBarButtonMiniaturize;
-    }
     if ((styleMask & NSResizableWindowMask) && NSPointInRect(point, zoomRect)) {
         return GSThemeTitleBarButtonZoom;
+    }
+    if ((styleMask & NSMiniaturizableWindowMask) && NSPointInRect(point, miniaturizeRect)) {
+        return GSThemeTitleBarButtonMiniaturize;
     }
 
     return GSThemeTitleBarButtonNone;

@@ -34,12 +34,13 @@ static NSInteger hoveredButtonIndex = -1;  // -1=none, 0=close, 1=mini, 2=zoom
 
 // Edge button metrics (matching Eau theme AppearanceMetrics.h)
 // Declared early so they can be used in hover state methods
-static const CGFloat TITLEBAR_HEIGHT = 22.0;
-static const CGFloat EDGE_BUTTON_WIDTH = 22.0;        // Width = height for square buttons
-static const CGFloat RIGHT_REGION_WIDTH = 44.0;       // 2 × 22
+static const CGFloat TITLEBAR_HEIGHT = 24.0;
+static const CGFloat EDGE_BUTTON_WIDTH = 28.0;        // Close button width
+static const CGFloat STACKED_REGION_WIDTH = 28.0;     // Width for stacked buttons (same as close)
+static const CGFloat STACKED_BUTTON_HEIGHT = 12.0;    // Half of titlebar height (24/2)
 static const CGFloat BUTTON_INNER_RADIUS = 4.0;
 static const CGFloat ICON_STROKE = 2.0;               // Bolder icons
-static const CGFloat ICON_INSET = 8.0;                // ~6px icons (1px bigger)
+static const CGFloat ICON_INSET = 6.0;                // Icon inset from button edges
 
 #pragma mark - Fixed-size window tracking
 
@@ -91,30 +92,35 @@ static const CGFloat ICON_INSET = 8.0;                // ~6px icons (1px bigger)
 
 // Determine which button (if any) is at a given x coordinate
 // Returns: 0=close, 1=mini, 2=zoom, -1=none
+// Note: For stacked layout, use buttonIndexAtX:y:forWidth:height:hasMaximize: instead
 + (NSInteger)buttonIndexAtX:(CGFloat)x forWidth:(CGFloat)width hasMaximize:(BOOL)hasMax {
-    // Close button at left edge (0 to EDGE_BUTTON_WIDTH)
+    // Delegate to the full method with y at middle of titlebar
+    return [self buttonIndexAtX:x y:TITLEBAR_HEIGHT / 2.0 forWidth:width height:TITLEBAR_HEIGHT hasMaximize:hasMax];
+}
+
+// Determine which button (if any) is at a given x,y coordinate (for stacked buttons)
+// Returns: 0=close, 1=mini, 2=zoom, -1=none
+// Layout: Close (X) on left full height, stacked Zoom (+) top / Minimize (-) bottom on right
++ (NSInteger)buttonIndexAtX:(CGFloat)x y:(CGFloat)y forWidth:(CGFloat)width height:(CGFloat)height hasMaximize:(BOOL)hasMax {
+    // Close button at left edge (0 to EDGE_BUTTON_WIDTH, full height)
     if (x >= 0 && x < EDGE_BUTTON_WIDTH) {
         return 0;  // Close button
     }
 
-    // Right region buttons
-    if (hasMax) {
-        // Both minimize and maximize buttons
-        CGFloat miniStart = width - RIGHT_REGION_WIDTH;
-        CGFloat miniEnd = width - (RIGHT_REGION_WIDTH / 2.0);
-        CGFloat zoomStart = miniEnd;
-        CGFloat zoomEnd = width;
-
-        if (x >= miniStart && x < miniEnd) {
-            return 1;  // Minimize button
-        }
-        if (x >= zoomStart && x <= zoomEnd) {
-            return 2;  // Maximize button
-        }
-    } else {
-        // Only minimize button (takes the right edge position)
-        CGFloat miniStart = width - EDGE_BUTTON_WIDTH;
-        if (x >= miniStart && x <= width) {
+    // Stacked buttons on right side
+    CGFloat stackedStart = width - STACKED_REGION_WIDTH;
+    if (x >= stackedStart && x <= width) {
+        if (hasMax) {
+            // Both buttons stacked: zoom on top, minimize on bottom
+            // X11 coordinates: Y=0 is at TOP, so y < midY means top half
+            CGFloat midY = height / 2.0;
+            if (y < midY) {
+                return 2;  // Zoom/maximize button (top half, Y=0 to midY)
+            } else {
+                return 1;  // Minimize button (bottom half, Y=midY to height)
+            }
+        } else {
+            // Only minimize button (takes full right region)
             return 1;  // Minimize button
         }
     }
@@ -122,11 +128,11 @@ static const CGFloat ICON_INSET = 8.0;                // ~6px icons (1px bigger)
     return -1;  // Not over any button
 }
 
-// Button position enum (matching Eau theme EauTitleBarButtonCell.h)
+// Button position enum for stacked titlebar buttons
 typedef NS_ENUM(NSInteger, TitleBarButtonPosition) {
-    TitleBarButtonPositionLeft = 0,       // Close button - left edge
-    TitleBarButtonPositionRightLeft,      // Minimize - left side of right region
-    TitleBarButtonPositionRightRight      // Maximize - right side of right region
+    TitleBarButtonPositionLeft = 0,       // Close button - left edge, full height
+    TitleBarButtonPositionRightTop,       // Zoom/maximize - top half of right region
+    TitleBarButtonPositionRightBottom     // Minimize - bottom half of right region
 };
 
 // Draw rectangular edge button with gradient
@@ -197,24 +203,23 @@ typedef NS_ENUM(NSInteger, TitleBarButtonPosition) {
         // Close button: line from after top-left arc to right edge
         [topLine moveToPoint:NSMakePoint(NSMinX(rect) + radius, NSMaxY(rect) - 0.5)];
         [topLine lineToPoint:NSMakePoint(NSMaxX(rect), NSMaxY(rect) - 0.5)];
-    } else if (position == TitleBarButtonPositionRightRight) {
-        // Maximize/edge button: line from left edge to before top-right arc
+    } else if (position == TitleBarButtonPositionRightTop) {
+        // Zoom button (top of stacked): line from left edge to before top-right arc
         [topLine moveToPoint:NSMakePoint(NSMinX(rect), NSMaxY(rect) - 0.5)];
         [topLine lineToPoint:NSMakePoint(NSMaxX(rect) - radius, NSMaxY(rect) - 0.5)];
-    } else {
-        // Middle button (minimize when both exist): full width line
-        [topLine moveToPoint:NSMakePoint(NSMinX(rect), NSMaxY(rect) - 0.5)];
-        [topLine lineToPoint:NSMakePoint(NSMaxX(rect), NSMaxY(rect) - 0.5)];
     }
-    [topBorderColor setStroke];
-    [topLine setLineWidth:1.0];
-    [topLine stroke];
+    // RightBottom doesn't need a top border line (it's an interior button)
+    if ([topLine elementCount] > 0) {
+        [topBorderColor setStroke];
+        [topLine setLineWidth:1.0];
+        [topLine stroke];
+    }
 
-    // Draw divider for minimize button (when next to maximize)
-    if (position == TitleBarButtonPositionRightLeft) {
+    // Draw horizontal divider between stacked buttons (at the top of minimize button)
+    if (position == TitleBarButtonPositionRightBottom) {
         NSBezierPath *divider = [NSBezierPath bezierPath];
-        [divider moveToPoint:NSMakePoint(NSMaxX(rect), NSMinY(rect) + 4)];
-        [divider lineToPoint:NSMakePoint(NSMaxX(rect), NSMaxY(rect) - 4)];
+        [divider moveToPoint:NSMakePoint(NSMinX(rect) + 4, NSMaxY(rect))];
+        [divider lineToPoint:NSMakePoint(NSMaxX(rect) - 4, NSMaxY(rect))];
         [borderColor setStroke];
         [divider setLineWidth:1.0];
         [divider stroke];
@@ -227,7 +232,7 @@ typedef NS_ENUM(NSInteger, TitleBarButtonPosition) {
 
     switch (position) {
         case TitleBarButtonPositionLeft:
-            // Close button: ONLY top-left corner rounded, inner edge (right) is straight
+            // Close button: ONLY top-left corner rounded, full height
             [path moveToPoint:NSMakePoint(NSMinX(frame), NSMinY(frame))];  // bottom-left
             [path lineToPoint:NSMakePoint(NSMaxX(frame), NSMinY(frame))];  // bottom-right (straight)
             [path lineToPoint:NSMakePoint(NSMaxX(frame), NSMaxY(frame))];  // top-right (straight inner edge)
@@ -239,13 +244,8 @@ typedef NS_ENUM(NSInteger, TitleBarButtonPosition) {
             [path closePath];
             break;
 
-        case TitleBarButtonPositionRightLeft:
-            // Minimize button: NO rounding at all (middle button, both edges face title)
-            [path appendBezierPathWithRect:frame];
-            break;
-
-        case TitleBarButtonPositionRightRight:
-            // Maximize button: ONLY top-right corner rounded, inner edge (left) is straight
+        case TitleBarButtonPositionRightTop:
+            // Zoom button (top of stacked): ONLY top-right corner rounded
             [path moveToPoint:NSMakePoint(NSMinX(frame), NSMinY(frame))];  // bottom-left
             [path lineToPoint:NSMakePoint(NSMaxX(frame), NSMinY(frame))];  // bottom-right
             [path lineToPoint:NSMakePoint(NSMaxX(frame), NSMaxY(frame) - radius)];  // up right edge to arc
@@ -255,6 +255,11 @@ typedef NS_ENUM(NSInteger, TitleBarButtonPosition) {
                                            endAngle:90];  // top-right corner
             [path lineToPoint:NSMakePoint(NSMinX(frame), NSMaxY(frame))];  // straight inner edge (left)
             [path closePath];
+            break;
+
+        case TitleBarButtonPositionRightBottom:
+            // Minimize button (bottom of stacked): NO rounding (interior button)
+            [path appendBezierPathWithRect:frame];
             break;
     }
 
@@ -285,8 +290,10 @@ typedef NS_ENUM(NSInteger, TitleBarButtonPosition) {
     [path stroke];
 }
 
-// Draw minimize icon (closed down triangle, not filled, squat shape)
+// Draw minimize icon (horizontal minus symbol)
 + (void)drawMinimizeIconInRect:(NSRect)rect withColor:(NSColor *)color {
+    if (!color) return;
+
     // Make icon rect square by adding extra horizontal inset if needed
     CGFloat extraHInset = (NSWidth(rect) - NSHeight(rect)) / 2.0;
     if (extraHInset > 0) {
@@ -296,24 +303,21 @@ typedef NS_ENUM(NSInteger, TitleBarButtonPosition) {
     NSBezierPath *path = [NSBezierPath bezierPath];
     [path setLineWidth:ICON_STROKE];
     [path setLineCapStyle:NSRoundLineCapStyle];
-    [path setLineJoinStyle:NSRoundLineJoinStyle];
 
-    // Squat down triangle - reduce height by 30% for wider/shorter shape
-    CGFloat heightReduction = NSHeight(rect) * 0.3;
-    CGFloat top = NSMaxY(rect) - heightReduction / 2.0;
-    CGFloat bottom = NSMinY(rect) + heightReduction / 2.0;
-
-    [path moveToPoint:NSMakePoint(NSMinX(rect), top)];
-    [path lineToPoint:NSMakePoint(NSMidX(rect), bottom)];
-    [path lineToPoint:NSMakePoint(NSMaxX(rect), top)];
-    [path closePath];
+    // Horizontal line (minus symbol)
+    CGFloat inset = NSWidth(rect) * 0.2;
+    CGFloat midY = NSMidY(rect);
+    [path moveToPoint:NSMakePoint(NSMinX(rect) + inset, midY)];
+    [path lineToPoint:NSMakePoint(NSMaxX(rect) - inset, midY)];
 
     [color setStroke];
     [path stroke];
 }
 
-// Draw maximize icon (closed up triangle, not filled, squat shape)
+// Draw maximize/zoom icon (plus symbol)
 + (void)drawMaximizeIconInRect:(NSRect)rect withColor:(NSColor *)color {
+    if (!color) return;
+
     // Make icon rect square by adding extra horizontal inset if needed
     CGFloat extraHInset = (NSWidth(rect) - NSHeight(rect)) / 2.0;
     if (extraHInset > 0) {
@@ -323,17 +327,18 @@ typedef NS_ENUM(NSInteger, TitleBarButtonPosition) {
     NSBezierPath *path = [NSBezierPath bezierPath];
     [path setLineWidth:ICON_STROKE];
     [path setLineCapStyle:NSRoundLineCapStyle];
-    [path setLineJoinStyle:NSRoundLineJoinStyle];
 
-    // Squat up triangle - reduce height by 30% for wider/shorter shape
-    CGFloat heightReduction = NSHeight(rect) * 0.3;
-    CGFloat top = NSMaxY(rect) - heightReduction / 2.0;
-    CGFloat bottom = NSMinY(rect) + heightReduction / 2.0;
+    // Plus symbol
+    CGFloat inset = NSWidth(rect) * 0.2;
+    CGFloat midX = NSMidX(rect);
+    CGFloat midY = NSMidY(rect);
 
-    [path moveToPoint:NSMakePoint(NSMinX(rect), bottom)];
-    [path lineToPoint:NSMakePoint(NSMidX(rect), top)];
-    [path lineToPoint:NSMakePoint(NSMaxX(rect), bottom)];
-    [path closePath];
+    // Horizontal line
+    [path moveToPoint:NSMakePoint(NSMinX(rect) + inset, midY)];
+    [path lineToPoint:NSMakePoint(NSMaxX(rect) - inset, midY)];
+    // Vertical line
+    [path moveToPoint:NSMakePoint(midX, NSMinY(rect) + inset)];
+    [path lineToPoint:NSMakePoint(midX, NSMaxY(rect) - inset)];
 
     [color setStroke];
     [path stroke];
@@ -510,10 +515,12 @@ typedef NS_ENUM(NSInteger, TitleBarButtonPosition) {
                           state:state
                        andTitle:title ?: @""];
 
-        // Draw rectangular edge buttons: Close on left, Minimize+Maximize on right
+        // Draw buttons: Close (X) on left, stacked Zoom (+) / Minimize (-) on right
         NSColor *iconColor = [URSThemeIntegration iconColorForActive:isActive highlighted:NO];
+        BOOL hasMaximize = (styleMask & NSResizableWindowMask) != 0;
+        BOOL hasMinimize = (styleMask & NSMiniaturizableWindowMask) != 0;
 
-        // Close button at left edge
+        // Close button at left edge (full height)
         if (styleMask & NSClosableWindowMask) {
             NSRect closeFrame = NSMakeRect(0, 0, EDGE_BUTTON_WIDTH, TITLEBAR_HEIGHT);
             [URSThemeIntegration drawEdgeButtonInRect:closeFrame
@@ -526,34 +533,50 @@ typedef NS_ENUM(NSInteger, TitleBarButtonPosition) {
             NSLog(@"Drew close button at: %@", NSStringFromRect(closeFrame));
         }
 
-        // Minimize button at left side of right region
-        if (styleMask & NSMiniaturizableWindowMask) {
-            CGFloat buttonWidth = RIGHT_REGION_WIDTH / 2.0;
-            NSRect miniFrame = NSMakeRect(titlebarSize.width - RIGHT_REGION_WIDTH, 0,
-                                          buttonWidth, TITLEBAR_HEIGHT);
-            [URSThemeIntegration drawEdgeButtonInRect:miniFrame
-                                             position:TitleBarButtonPositionRightLeft
-                                           buttonType:1
-                                               active:isActive
-                                              hovered:NO];
-            NSRect iconRect = NSInsetRect(miniFrame, ICON_INSET, ICON_INSET);
-            [URSThemeIntegration drawMinimizeIconInRect:iconRect withColor:iconColor];
-            NSLog(@"Drew miniaturize button at: %@", NSStringFromRect(miniFrame));
-        }
-
-        // Maximize button at right side of right region
-        if (styleMask & NSResizableWindowMask) {
-            CGFloat buttonWidth = RIGHT_REGION_WIDTH / 2.0;
-            NSRect zoomFrame = NSMakeRect(titlebarSize.width - buttonWidth, 0,
-                                          buttonWidth, TITLEBAR_HEIGHT);
+        // Stacked buttons on right: Zoom (+) on top, Minimize (-) on bottom
+        if (hasMaximize) {
+            // Zoom button (top half of stacked region)
+            NSRect zoomFrame = NSMakeRect(titlebarSize.width - STACKED_REGION_WIDTH,
+                                          STACKED_BUTTON_HEIGHT,
+                                          STACKED_REGION_WIDTH,
+                                          STACKED_BUTTON_HEIGHT);
             [URSThemeIntegration drawEdgeButtonInRect:zoomFrame
-                                             position:TitleBarButtonPositionRightRight
+                                             position:TitleBarButtonPositionRightTop
                                            buttonType:2
                                                active:isActive
                                               hovered:NO];
-            NSRect iconRect = NSInsetRect(zoomFrame, ICON_INSET, ICON_INSET);
-            [URSThemeIntegration drawMaximizeIconInRect:iconRect withColor:iconColor];
+            NSRect zoomIconRect = NSInsetRect(zoomFrame, ICON_INSET, ICON_INSET / 2.0);
+            [URSThemeIntegration drawMaximizeIconInRect:zoomIconRect withColor:iconColor];
             NSLog(@"Drew zoom button at: %@", NSStringFromRect(zoomFrame));
+        }
+
+        if (hasMinimize) {
+            // Minimize button (bottom half of stacked region, or full height if no maximize)
+            NSRect miniFrame;
+            TitleBarButtonPosition miniPosition;
+            if (hasMaximize) {
+                miniFrame = NSMakeRect(titlebarSize.width - STACKED_REGION_WIDTH,
+                                       0,
+                                       STACKED_REGION_WIDTH,
+                                       STACKED_BUTTON_HEIGHT);
+                miniPosition = TitleBarButtonPositionRightBottom;
+            } else {
+                // No maximize: minimize takes full height at right edge
+                miniFrame = NSMakeRect(titlebarSize.width - STACKED_REGION_WIDTH,
+                                       0,
+                                       STACKED_REGION_WIDTH,
+                                       TITLEBAR_HEIGHT);
+                miniPosition = TitleBarButtonPositionRightTop; // Use top position for rounding
+            }
+            [URSThemeIntegration drawEdgeButtonInRect:miniFrame
+                                             position:miniPosition
+                                           buttonType:1
+                                               active:isActive
+                                              hovered:NO];
+            CGFloat iconVInset = hasMaximize ? ICON_INSET / 2.0 : ICON_INSET;
+            NSRect miniIconRect = NSInsetRect(miniFrame, ICON_INSET, iconVInset);
+            [URSThemeIntegration drawMinimizeIconInRect:miniIconRect withColor:iconColor];
+            NSLog(@"Drew miniaturize button at: %@", NSStringFromRect(miniFrame));
         }
 
         [titlebarImage unlockFocus];
@@ -1074,13 +1097,13 @@ typedef NS_ENUM(NSInteger, TitleBarButtonPosition) {
         [gctx restoreGraphicsState];
 
         // *** BUTTON DRAWING ***
-        // Draw rectangular edge buttons: Close on left, Minimize+Maximize on right
-        // Buttons span full titlebar height (0 to titlebarSize.height)
+        // Draw buttons: Close (X) on left full height, stacked Zoom (+) / Minimize (-) on right
+        // Layout: Close=28x24, Zoom=28x12 (top), Minimize=28x12 (bottom)
 
-        NSLog(@"Drawing edge buttons for theme: %@", [theme name]);
+        NSLog(@"Drawing stacked edge buttons for theme: %@", [theme name]);
 
         CGFloat titlebarWidth = titlebarSize.width;
-        CGFloat buttonHeight = titlebarSize.height;  // Full height, no gap
+        CGFloat buttonHeight = titlebarSize.height;  // Full height for close button
         NSColor *iconColor = [self iconColorForActive:isActive highlighted:NO];
 
         BOOL hasMaximize = (styleMask & NSResizableWindowMask) != 0;
@@ -1091,7 +1114,7 @@ typedef NS_ENUM(NSInteger, TitleBarButtonPosition) {
         BOOL isTitlebarHovered = (titlebarId == hoveredTitlebarWindow);
         NSInteger hoverIdx = isTitlebarHovered ? hoveredButtonIndex : -1;
 
-        // Close button at left edge
+        // Close button at left edge (full height)
         if (styleMask & NSClosableWindowMask) {
             NSRect closeFrame = NSMakeRect(0, 0, EDGE_BUTTON_WIDTH, buttonHeight);
             BOOL closeHovered = (hoverIdx == 0);
@@ -1112,23 +1135,51 @@ typedef NS_ENUM(NSInteger, TitleBarButtonPosition) {
             NSLog(@"Drew close button at: %@ hovered:%d", NSStringFromRect(closeFrame), closeHovered);
         }
 
-        // Minimize button - position depends on whether maximize exists
+        // Stacked buttons on right: Zoom (+) on top, Minimize (-) on bottom
+        if (hasMaximize) {
+            // Zoom button (top half of stacked region)
+            NSRect zoomFrame = NSMakeRect(titlebarWidth - STACKED_REGION_WIDTH,
+                                          STACKED_BUTTON_HEIGHT,
+                                          STACKED_REGION_WIDTH,
+                                          STACKED_BUTTON_HEIGHT);
+            BOOL zoomHovered = (hoverIdx == 2);
+
+            // Draw button background
+            [self drawEdgeButtonInRect:zoomFrame
+                              position:TitleBarButtonPositionRightTop
+                            buttonType:2
+                                active:isActive
+                               hovered:zoomHovered];
+
+            // Draw plus icon (only on active windows)
+            if (iconColor) {
+                NSRect iconRect = NSInsetRect(zoomFrame, ICON_INSET, ICON_INSET / 2.0);
+                [self drawMaximizeIconInRect:iconRect withColor:iconColor];
+            }
+
+            NSLog(@"Drew zoom button at: %@ hovered:%d", NSStringFromRect(zoomFrame), zoomHovered);
+        }
+
         if (hasMinimize) {
+            // Minimize button (bottom half of stacked region, or full height if no maximize)
             NSRect miniFrame;
             TitleBarButtonPosition miniPosition;
             BOOL miniHovered = (hoverIdx == 1);
 
             if (hasMaximize) {
-                // Both buttons: minimize at left side of right region
-                CGFloat buttonWidth = EDGE_BUTTON_WIDTH;
-                miniFrame = NSMakeRect(titlebarWidth - RIGHT_REGION_WIDTH, 0,
-                                       buttonWidth, buttonHeight);
-                miniPosition = TitleBarButtonPositionRightLeft;
+                // Both buttons: minimize at bottom half
+                miniFrame = NSMakeRect(titlebarWidth - STACKED_REGION_WIDTH,
+                                       0,
+                                       STACKED_REGION_WIDTH,
+                                       STACKED_BUTTON_HEIGHT);
+                miniPosition = TitleBarButtonPositionRightBottom;
             } else {
-                // No maximize: minimize takes the right edge position
-                miniFrame = NSMakeRect(titlebarWidth - EDGE_BUTTON_WIDTH, 0,
-                                       EDGE_BUTTON_WIDTH, buttonHeight);
-                miniPosition = TitleBarButtonPositionRightRight;
+                // No maximize: minimize takes full height at right edge
+                miniFrame = NSMakeRect(titlebarWidth - STACKED_REGION_WIDTH,
+                                       0,
+                                       STACKED_REGION_WIDTH,
+                                       buttonHeight);
+                miniPosition = TitleBarButtonPositionRightTop; // Use top position for rounding
             }
 
             // Draw button background
@@ -1138,35 +1189,14 @@ typedef NS_ENUM(NSInteger, TitleBarButtonPosition) {
                                 active:isActive
                                hovered:miniHovered];
 
-            // Draw down-triangle icon (only on active windows)
+            // Draw minus icon (only on active windows)
             if (iconColor) {
-                NSRect iconRect = NSInsetRect(miniFrame, ICON_INSET, ICON_INSET);
+                CGFloat iconVInset = hasMaximize ? ICON_INSET / 2.0 : ICON_INSET;
+                NSRect iconRect = NSInsetRect(miniFrame, ICON_INSET, iconVInset);
                 [self drawMinimizeIconInRect:iconRect withColor:iconColor];
             }
 
             NSLog(@"Drew miniaturize button at: %@ hovered:%d", NSStringFromRect(miniFrame), miniHovered);
-        }
-
-        // Maximize button at right side of right region (only if resizable)
-        if (hasMaximize) {
-            NSRect zoomFrame = NSMakeRect(titlebarWidth - EDGE_BUTTON_WIDTH, 0,
-                                          EDGE_BUTTON_WIDTH, buttonHeight);
-            BOOL zoomHovered = (hoverIdx == 2);
-
-            // Draw button background
-            [self drawEdgeButtonInRect:zoomFrame
-                              position:TitleBarButtonPositionRightRight
-                            buttonType:2
-                                active:isActive
-                               hovered:zoomHovered];
-
-            // Draw up-triangle icon (only on active windows)
-            if (iconColor) {
-                NSRect iconRect = NSInsetRect(zoomFrame, ICON_INSET, ICON_INSET);
-                [self drawMaximizeIconInRect:iconRect withColor:iconColor];
-            }
-
-            NSLog(@"Drew zoom button at: %@ hovered:%d", NSStringFromRect(zoomFrame), zoomHovered);
         }
 
         [titlebarImage unlockFocus];
