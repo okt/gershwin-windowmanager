@@ -1622,6 +1622,12 @@
             return;
         }
 
+        // Reset cursor to normal arrow when over titlebar
+        // This ensures resize cursors from border areas don't persist
+        if (![[frame cursor] leftPointerSelected]) {
+            [frame showLeftPointerCursor];
+        }
+
         // Get titlebar dimensions and determine if it has maximize button
         XCBRect frameRect = [frame windowRect];
         XCBRect titlebarRect = [titlebar windowRect];

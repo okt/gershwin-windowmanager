@@ -328,7 +328,7 @@ typedef NS_ENUM(NSInteger, TitleBarButtonPosition) {
     [path setLineCapStyle:NSRoundLineCapStyle];
 
     // Horizontal line (minus symbol)
-    CGFloat inset = NSWidth(rect) * 0.2;
+    CGFloat inset = NSWidth(rect) * 0.15;  // Match close icon inset for consistent sizing
     CGFloat midY = NSMidY(rect);
     [path moveToPoint:NSMakePoint(NSMinX(rect) + inset, midY)];
     [path lineToPoint:NSMakePoint(NSMaxX(rect) - inset, midY)];
@@ -352,7 +352,7 @@ typedef NS_ENUM(NSInteger, TitleBarButtonPosition) {
     [path setLineCapStyle:NSRoundLineCapStyle];
 
     // Plus symbol
-    CGFloat inset = NSWidth(rect) * 0.2;
+    CGFloat inset = NSWidth(rect) * 0.15;  // Match close icon inset for consistent sizing
     CGFloat midX = NSMidX(rect);
     CGFloat midY = NSMidY(rect);
 
