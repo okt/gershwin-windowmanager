@@ -38,7 +38,7 @@ static const CGFloat TITLEBAR_HEIGHT = 24.0;
 static const CGFloat EDGE_BUTTON_WIDTH = 28.0;        // Close button width
 static const CGFloat STACKED_REGION_WIDTH = 28.0;     // Width for stacked buttons (same as close)
 static const CGFloat STACKED_BUTTON_HEIGHT = 12.0;    // Half of titlebar height (24/2)
-static const CGFloat BUTTON_INNER_RADIUS = 4.0;
+static const CGFloat BUTTON_INNER_RADIUS = 5.0;               // Matches Eau theme METRICS_TITLEBAR_BUTTON_INNER_RADIUS
 static const CGFloat ICON_STROKE = 1.5;               // Subtle icon strokes
 static const CGFloat ICON_INSET = 8.0;                // Icon inset from button edges (matches Eau theme)
 
