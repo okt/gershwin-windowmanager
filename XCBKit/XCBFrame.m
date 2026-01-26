@@ -680,11 +680,17 @@ static void sendSyntheticConfigureNotify(xcb_connection_t *conn,
 
     if ([theme respondsToSelector:@selector(titlebarCornerRadius)]) {
         topRadius = [theme titlebarCornerRadius];
+        NSLog(@"XCBFrame: Theme titlebarCornerRadius = %.1f", topRadius);
+    } else {
+        NSLog(@"XCBFrame: Theme does NOT respond to titlebarCornerRadius selector");
     }
 
     if ([theme respondsToSelector:@selector(windowBottomCornerRadius)]) {
         bottomRadius = [theme windowBottomCornerRadius];
     }
+
+    NSLog(@"XCBFrame: Applying rounded corners - top=%.1f, bottom=%.1f for window %u",
+          topRadius, bottomRadius, window);
 
     if (topRadius > 0 || bottomRadius > 0) {
         XCBShape *shape = [[XCBShape alloc] initWithConnection:connection withWinId:window];
@@ -693,6 +699,7 @@ static void sendSyntheticConfigureNotify(xcb_connection_t *conn,
             [shape calculateDimensionsFromGeometries:geometry];
             [shape createPixmapsAndGCs];
             [shape createRoundedCornersWithTopRadius:(int)topRadius bottomRadius:(int)bottomRadius];
+            NSLog(@"XCBFrame: Shape mask applied with topRadius=%d", (int)topRadius);
         }
     }
 }
