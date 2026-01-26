@@ -39,8 +39,8 @@ static const CGFloat EDGE_BUTTON_WIDTH = 28.0;        // Close button width
 static const CGFloat STACKED_REGION_WIDTH = 28.0;     // Width for stacked buttons (same as close)
 static const CGFloat STACKED_BUTTON_HEIGHT = 12.0;    // Half of titlebar height (24/2)
 static const CGFloat BUTTON_INNER_RADIUS = 4.0;
-static const CGFloat ICON_STROKE = 2.0;               // Bolder icons
-static const CGFloat ICON_INSET = 6.0;                // Icon inset from button edges
+static const CGFloat ICON_STROKE = 1.5;               // Subtle icon strokes
+static const CGFloat ICON_INSET = 8.0;                // Icon inset from button edges (matches Eau theme)
 
 #pragma mark - Fixed-size window tracking
 
@@ -191,6 +191,29 @@ typedef NS_ENUM(NSInteger, TitleBarButtonPosition) {
     // Fill with gradient
     [gradient drawInBezierPath:path angle:-90];
 
+    // Determine if this is a full-height or half-height button
+    BOOL isHalfHeight = (NSHeight(rect) <= STACKED_BUTTON_HEIGHT + 1);  // Allow 1px tolerance
+
+    // Inner highlight - white line near top for 3D raised effect
+    NSColor *highlightColor = [NSColor colorWithCalibratedWhite:1.0 alpha:0.35];
+    NSBezierPath *highlightPath = [NSBezierPath bezierPath];
+    CGFloat highlightY = NSMaxY(rect) - (isHalfHeight ? 1.5 : 2.5);  // Adjust for button height
+    [highlightPath moveToPoint:NSMakePoint(NSMinX(rect) + 2, highlightY)];
+    [highlightPath lineToPoint:NSMakePoint(NSMaxX(rect) - 2, highlightY)];
+    [highlightColor setStroke];
+    [highlightPath setLineWidth:1.0];
+    [highlightPath stroke];
+
+    // Inner shadow - black line near bottom for 3D depth
+    NSColor *shadowColor = [NSColor colorWithCalibratedWhite:0.0 alpha:0.15];
+    NSBezierPath *shadowPath = [NSBezierPath bezierPath];
+    CGFloat shadowY = NSMinY(rect) + (isHalfHeight ? 1.0 : 1.5);  // Adjust for button height
+    [shadowPath moveToPoint:NSMakePoint(NSMinX(rect) + 2, shadowY)];
+    [shadowPath lineToPoint:NSMakePoint(NSMaxX(rect) - 2, shadowY)];
+    [shadowColor setStroke];
+    [shadowPath setLineWidth:1.0];
+    [shadowPath stroke];
+
     // Stroke border
     [borderColor setStroke];
     [path setLineWidth:1.0];
@@ -290,7 +313,7 @@ typedef NS_ENUM(NSInteger, TitleBarButtonPosition) {
     [path stroke];
 }
 
-// Draw minimize icon (horizontal minus symbol)
+// Draw minimize icon (horizontal minus symbol −)
 + (void)drawMinimizeIconInRect:(NSRect)rect withColor:(NSColor *)color {
     if (!color) return;
 
