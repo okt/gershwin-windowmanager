@@ -168,13 +168,13 @@ typedef NS_ENUM(NSInteger, TitleBarButtonPosition) {
                 break;
         }
     } else if (active) {
-        // Active window - dark gray gradient for strong button contrast
-        gradientColor1 = [NSColor colorWithCalibratedRed:0.65 green:0.65 blue:0.65 alpha:1];
-        gradientColor2 = [NSColor colorWithCalibratedRed:0.45 green:0.45 blue:0.45 alpha:1];
+        // Active window - #C2C2C2 average (0.76) with subtle gradient
+        gradientColor1 = [NSColor colorWithCalibratedRed:0.82 green:0.82 blue:0.82 alpha:1];  // #D1D1D1
+        gradientColor2 = [NSColor colorWithCalibratedRed:0.70 green:0.70 blue:0.70 alpha:1];  // #B3B3B3
     } else {
-        // Inactive window - dimmed gray colors
-        gradientColor1 = [NSColor colorWithCalibratedRed:0.75 green:0.75 blue:0.75 alpha:1];
-        gradientColor2 = [NSColor colorWithCalibratedRed:0.6 green:0.6 blue:0.6 alpha:1];
+        // Inactive window - slightly lighter/washed out
+        gradientColor1 = [NSColor colorWithCalibratedRed:0.85 green:0.85 blue:0.85 alpha:1];
+        gradientColor2 = [NSColor colorWithCalibratedRed:0.75 green:0.75 blue:0.75 alpha:1];
     }
 
     NSGradient *gradient = [[NSGradient alloc] initWithStartingColor:gradientColor1
