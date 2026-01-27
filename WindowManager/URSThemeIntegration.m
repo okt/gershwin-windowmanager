@@ -249,25 +249,22 @@ typedef NS_ENUM(NSInteger, TitleBarButtonPosition) {
     }
 
     // Draw outer edge borders (1px darker outline on far left/right of titlebar)
-    NSColor *outerEdgeColor = [NSColor colorWithCalibratedRed:0.35 green:0.35 blue:0.35 alpha:1.0];
-    [outerEdgeColor setStroke];
+    // Use same color as main border for consistency
+    [borderColor setStroke];
 
     if (position == TitleBarButtonPositionLeft) {
         // Close button: draw left edge border (far left of titlebar)
+        // Draw at x=0.5 so the 1px line is fully visible at the left edge
         NSBezierPath *leftEdge = [NSBezierPath bezierPath];
-        [leftEdge moveToPoint:NSMakePoint(NSMinX(rect) + 0.5, NSMinY(rect))];
-        [leftEdge lineToPoint:NSMakePoint(NSMinX(rect) + 0.5, NSMaxY(rect) - radius)];
+        [leftEdge moveToPoint:NSMakePoint(0.5, NSMinY(rect))];
+        [leftEdge lineToPoint:NSMakePoint(0.5, NSMaxY(rect))];
         [leftEdge setLineWidth:1.0];
         [leftEdge stroke];
-    } else if (position == TitleBarButtonPositionRightTop) {
-        // Zoom button: draw right edge border (far right of titlebar, top portion)
-        NSBezierPath *rightEdge = [NSBezierPath bezierPath];
-        [rightEdge moveToPoint:NSMakePoint(NSMaxX(rect) - 0.5, NSMinY(rect))];
-        [rightEdge lineToPoint:NSMakePoint(NSMaxX(rect) - 0.5, NSMaxY(rect) - radius)];
-        [rightEdge setLineWidth:1.0];
-        [rightEdge stroke];
-    } else if (position == TitleBarButtonPositionRightBottom) {
-        // Minimize button: draw right edge border (far right of titlebar, bottom portion)
+    }
+
+    // Right edge border - drawn by stacked buttons
+    if (position == TitleBarButtonPositionRightTop || position == TitleBarButtonPositionRightBottom) {
+        // Draw right edge border for this button's vertical extent
         NSBezierPath *rightEdge = [NSBezierPath bezierPath];
         [rightEdge moveToPoint:NSMakePoint(NSMaxX(rect) - 0.5, NSMinY(rect))];
         [rightEdge lineToPoint:NSMakePoint(NSMaxX(rect) - 0.5, NSMaxY(rect))];
