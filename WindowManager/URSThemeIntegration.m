@@ -132,7 +132,8 @@ static const CGFloat ICON_INSET = 8.0;                // Icon inset from button 
 typedef NS_ENUM(NSInteger, TitleBarButtonPosition) {
     TitleBarButtonPositionLeft = 0,       // Close button - left edge, full height
     TitleBarButtonPositionRightTop,       // Zoom/maximize - top half of right region
-    TitleBarButtonPositionRightBottom     // Minimize - bottom half of right region
+    TitleBarButtonPositionRightBottom,    // Minimize - bottom half of right region
+    TitleBarButtonPositionRightFull       // Minimize alone - full height, both corners rounded
 };
 
 // Draw rectangular edge button with gradient
@@ -265,8 +266,10 @@ typedef NS_ENUM(NSInteger, TitleBarButtonPosition) {
         [leftEdge stroke];
     }
 
-    // Right edge border - drawn by stacked buttons
-    if (position == TitleBarButtonPositionRightTop || position == TitleBarButtonPositionRightBottom) {
+    // Right edge border - drawn by right-side buttons
+    if (position == TitleBarButtonPositionRightTop ||
+        position == TitleBarButtonPositionRightBottom ||
+        position == TitleBarButtonPositionRightFull) {
         // Draw right edge border for this button's vertical extent
         // Draw at NSMaxX(rect) - 1.5 to account for X11 window offset (positioned at x=-1, width += 2)
         NSBezierPath *rightEdge = [NSBezierPath bezierPath];
@@ -276,8 +279,10 @@ typedef NS_ENUM(NSInteger, TitleBarButtonPosition) {
         [rightEdge stroke];
     }
 
-    // Bottom border - drawn by buttons that touch the titlebar bottom (Left and RightBottom)
-    if (position == TitleBarButtonPositionLeft || position == TitleBarButtonPositionRightBottom) {
+    // Bottom border - drawn by buttons that touch the titlebar bottom
+    if (position == TitleBarButtonPositionLeft ||
+        position == TitleBarButtonPositionRightBottom ||
+        position == TitleBarButtonPositionRightFull) {
         NSBezierPath *bottomLine = [NSBezierPath bezierPath];
         [bottomLine moveToPoint:NSMakePoint(NSMinX(rect), NSMinY(rect) + 0.5)];
         [bottomLine lineToPoint:NSMakePoint(NSMaxX(rect), NSMinY(rect) + 0.5)];
@@ -321,6 +326,23 @@ typedef NS_ENUM(NSInteger, TitleBarButtonPosition) {
         case TitleBarButtonPositionRightBottom:
             // Minimize button (bottom of stacked): NO rounding (interior button)
             [path appendBezierPathWithRect:frame];
+            break;
+
+        case TitleBarButtonPositionRightFull:
+            // Minimize button alone (full height): BOTH top-right and bottom-right corners rounded
+            [path moveToPoint:NSMakePoint(NSMinX(frame), NSMinY(frame))];  // bottom-left (inner edge)
+            [path lineToPoint:NSMakePoint(NSMaxX(frame) - radius, NSMinY(frame))];  // to bottom-right arc
+            [path appendBezierPathWithArcWithCenter:NSMakePoint(NSMaxX(frame) - radius, NSMinY(frame) + radius)
+                                             radius:radius
+                                         startAngle:270
+                                           endAngle:0];  // bottom-right corner
+            [path lineToPoint:NSMakePoint(NSMaxX(frame), NSMaxY(frame) - radius)];  // up right edge to top arc
+            [path appendBezierPathWithArcWithCenter:NSMakePoint(NSMaxX(frame) - radius, NSMaxY(frame) - radius)
+                                             radius:radius
+                                         startAngle:0
+                                           endAngle:90];  // top-right corner
+            [path lineToPoint:NSMakePoint(NSMinX(frame), NSMaxY(frame))];  // straight inner edge (top)
+            [path closePath];
             break;
     }
 
@@ -637,7 +659,7 @@ typedef NS_ENUM(NSInteger, TitleBarButtonPosition) {
                                        0,
                                        STACKED_REGION_WIDTH,
                                        TITLEBAR_HEIGHT);
-                miniPosition = TitleBarButtonPositionRightTop; // Use top position for rounding
+                miniPosition = TitleBarButtonPositionRightFull; // Full height, both corners rounded
             }
             [URSThemeIntegration drawEdgeButtonInRect:miniFrame
                                              position:miniPosition
@@ -1250,7 +1272,7 @@ typedef NS_ENUM(NSInteger, TitleBarButtonPosition) {
                                        0,
                                        STACKED_REGION_WIDTH,
                                        buttonHeight);
-                miniPosition = TitleBarButtonPositionRightTop; // Use top position for rounding
+                miniPosition = TitleBarButtonPositionRightFull; // Full height, both corners rounded
             }
 
             // Draw button background
