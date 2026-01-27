@@ -5,20 +5,15 @@
 # like `install` (implemented in sub-Makefiles and invoked via
 # recursive `$(MAKE) -C <dir>`) are always executed even if files of
 # the same name exist in the tree.
-.PHONY: all XCBKit WindowManager clean install
+.PHONY: all WindowManager clean install
 
-all: XCBKit WindowManager
-
-XCBKit:
-	$(MAKE) -C XCBKit -f GNUmakefile
+all: WindowManager
 
 WindowManager: XCBKit
 	$(MAKE) -C WindowManager -f GNUmakefile
 
-install: XCBKit WindowManager
-	$(MAKE) -C XCBKit -f GNUmakefile install
+install: WindowManager
 	$(MAKE) -C WindowManager -f GNUmakefile install
 
 clean:
-	$(MAKE) -C XCBKit -f GNUmakefile clean
 	$(MAKE) -C WindowManager -f GNUmakefile clean

@@ -8,11 +8,7 @@ VERSION = 0.1.0
 
 DEPENDENCIES = XCBKit
 
-.PHONY: XCBKit
-all:: XCBKit
-
-XCBKit:
-	$(MAKE) -C ../XCBKit -f GNUmakefile
+# XCBKit is declared as a dependency above; no standalone target here.
 
 APP_NAME = WindowManager
 $(APP_NAME)_APPLICATION_ICON = WindowManager.png
