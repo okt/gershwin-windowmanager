@@ -247,6 +247,33 @@ typedef NS_ENUM(NSInteger, TitleBarButtonPosition) {
         [divider setLineWidth:1.0];
         [divider stroke];
     }
+
+    // Draw outer edge borders (1px darker outline on far left/right of titlebar)
+    NSColor *outerEdgeColor = [NSColor colorWithCalibratedRed:0.35 green:0.35 blue:0.35 alpha:1.0];
+    [outerEdgeColor setStroke];
+
+    if (position == TitleBarButtonPositionLeft) {
+        // Close button: draw left edge border (far left of titlebar)
+        NSBezierPath *leftEdge = [NSBezierPath bezierPath];
+        [leftEdge moveToPoint:NSMakePoint(NSMinX(rect) + 0.5, NSMinY(rect))];
+        [leftEdge lineToPoint:NSMakePoint(NSMinX(rect) + 0.5, NSMaxY(rect) - radius)];
+        [leftEdge setLineWidth:1.0];
+        [leftEdge stroke];
+    } else if (position == TitleBarButtonPositionRightTop) {
+        // Zoom button: draw right edge border (far right of titlebar, top portion)
+        NSBezierPath *rightEdge = [NSBezierPath bezierPath];
+        [rightEdge moveToPoint:NSMakePoint(NSMaxX(rect) - 0.5, NSMinY(rect))];
+        [rightEdge lineToPoint:NSMakePoint(NSMaxX(rect) - 0.5, NSMaxY(rect) - radius)];
+        [rightEdge setLineWidth:1.0];
+        [rightEdge stroke];
+    } else if (position == TitleBarButtonPositionRightBottom) {
+        // Minimize button: draw right edge border (far right of titlebar, bottom portion)
+        NSBezierPath *rightEdge = [NSBezierPath bezierPath];
+        [rightEdge moveToPoint:NSMakePoint(NSMaxX(rect) - 0.5, NSMinY(rect))];
+        [rightEdge lineToPoint:NSMakePoint(NSMaxX(rect) - 0.5, NSMaxY(rect))];
+        [rightEdge setLineWidth:1.0];
+        [rightEdge stroke];
+    }
 }
 
 + (NSBezierPath *)buttonPathForRect:(NSRect)frame position:(TitleBarButtonPosition)position {
