@@ -10,6 +10,7 @@
 all: WindowManager
 
 WindowManager: XCBKit
+	$(MAKE) -C XCBKit -f GNUmakefile
 	$(MAKE) -C WindowManager -f GNUmakefile
 
 install: WindowManager
