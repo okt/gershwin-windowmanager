@@ -185,6 +185,9 @@ typedef NS_ENUM(NSInteger, TitleBarButtonPosition) {
     // Top border color - matches titlebar top edge (slightly lighter for visual trick)
     NSColor *topBorderColor = [NSColor colorWithCalibratedRed:0.5 green:0.5 blue:0.5 alpha:1.0];
 
+    // Bottom border color - matches titlebar bottom edge #717171
+    NSColor *bottomBorderColor = [NSColor colorWithCalibratedRed:0.443 green:0.443 blue:0.443 alpha:1.0];
+
     // Create path with appropriate corner rounding
     NSBezierPath *path = [self buttonPathForRect:rect position:position];
 
@@ -254,10 +257,10 @@ typedef NS_ENUM(NSInteger, TitleBarButtonPosition) {
 
     if (position == TitleBarButtonPositionLeft) {
         // Close button: draw left edge border (far left of titlebar)
-        // Draw at x=0.5 so the 1px line is fully visible at the left edge
+        // Draw at x=1.5 to account for X11 window offset (positioned at x=-1)
         NSBezierPath *leftEdge = [NSBezierPath bezierPath];
-        [leftEdge moveToPoint:NSMakePoint(0.5, NSMinY(rect))];
-        [leftEdge lineToPoint:NSMakePoint(0.5, NSMaxY(rect))];
+        [leftEdge moveToPoint:NSMakePoint(1.5, NSMinY(rect))];
+        [leftEdge lineToPoint:NSMakePoint(1.5, NSMaxY(rect))];
         [leftEdge setLineWidth:1.0];
         [leftEdge stroke];
     }
@@ -265,11 +268,22 @@ typedef NS_ENUM(NSInteger, TitleBarButtonPosition) {
     // Right edge border - drawn by stacked buttons
     if (position == TitleBarButtonPositionRightTop || position == TitleBarButtonPositionRightBottom) {
         // Draw right edge border for this button's vertical extent
+        // Draw at NSMaxX(rect) - 1.5 to account for X11 window offset (positioned at x=-1, width += 2)
         NSBezierPath *rightEdge = [NSBezierPath bezierPath];
-        [rightEdge moveToPoint:NSMakePoint(NSMaxX(rect) - 0.5, NSMinY(rect))];
-        [rightEdge lineToPoint:NSMakePoint(NSMaxX(rect) - 0.5, NSMaxY(rect))];
+        [rightEdge moveToPoint:NSMakePoint(NSMaxX(rect) - 1.5, NSMinY(rect))];
+        [rightEdge lineToPoint:NSMakePoint(NSMaxX(rect) - 1.5, NSMaxY(rect))];
         [rightEdge setLineWidth:1.0];
         [rightEdge stroke];
+    }
+
+    // Bottom border - drawn by buttons that touch the titlebar bottom (Left and RightBottom)
+    if (position == TitleBarButtonPositionLeft || position == TitleBarButtonPositionRightBottom) {
+        NSBezierPath *bottomLine = [NSBezierPath bezierPath];
+        [bottomLine moveToPoint:NSMakePoint(NSMinX(rect), NSMinY(rect) + 0.5)];
+        [bottomLine lineToPoint:NSMakePoint(NSMaxX(rect), NSMinY(rect) + 0.5)];
+        [bottomBorderColor setStroke];
+        [bottomLine setLineWidth:1.0];
+        [bottomLine stroke];
     }
 }
 
