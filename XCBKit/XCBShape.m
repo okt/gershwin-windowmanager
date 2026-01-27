@@ -174,9 +174,9 @@
     xcb_poly_fill_rectangle(conn, borderPixmap, black, 1, &bounding);
 
     // Build rectangles for the straight edges
-    // Note: diameter is (radius * 2 - 1) for proper XCB arc alignment (matches createArcsWithRadius)
-    int topDiameter = (topRadius > 0) ? (topRadius * 2 - 1) : 0;
-    int bottomDiameter = (bottomRadius > 0) ? (bottomRadius * 2 - 1) : 0;
+    // Note: diameter is (radius * 2) to match createTopArcsWithRadius
+    int topDiameter = (topRadius > 0) ? (topRadius * 2) : 0;
+    int bottomDiameter = (bottomRadius > 0) ? (bottomRadius * 2) : 0;
 
     NSLog(@"XCBShape: Calculated diameters: topDiameter=%d, bottomDiameter=%d", topDiameter, bottomDiameter);
 
