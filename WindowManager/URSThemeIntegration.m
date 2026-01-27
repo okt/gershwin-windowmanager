@@ -43,6 +43,7 @@ static const CGFloat STACKED_BUTTON_HEIGHT = 12.0;    // Half of titlebar height
 static const CGFloat BUTTON_INNER_RADIUS = 5.0;               // Matches Eau theme METRICS_TITLEBAR_BUTTON_INNER_RADIUS
 static const CGFloat ICON_STROKE = 1.5;               // Subtle icon strokes
 static const CGFloat ICON_INSET = 8.0;                // Icon inset from button edges (matches Eau theme)
+static const CGFloat STACKED_ICON_INSET = 4.0;        // Smaller inset for stacked buttons (bigger icons)
 
 #pragma mark - Fixed-size window tracking
 
@@ -709,7 +710,8 @@ typedef NS_ENUM(NSInteger, TitleBarButtonPosition) {
                                            buttonType:2
                                                active:isActive
                                               hovered:NO];
-            NSRect zoomIconRect = NSInsetRect(zoomFrame, ICON_INSET, ICON_INSET / 2.0);
+            // Use smaller inset for stacked buttons so icons are bigger
+            NSRect zoomIconRect = NSInsetRect(zoomFrame, STACKED_ICON_INSET, STACKED_ICON_INSET / 2.0);
             [URSThemeIntegration drawMaximizeIconInRect:zoomIconRect withColor:iconColor];
             NSLog(@"Drew zoom button at: %@", NSStringFromRect(zoomFrame));
         }
@@ -737,8 +739,10 @@ typedef NS_ENUM(NSInteger, TitleBarButtonPosition) {
                                            buttonType:1
                                                active:isActive
                                               hovered:NO];
-            CGFloat iconVInset = hasMaximize ? ICON_INSET / 2.0 : ICON_INSET;
-            NSRect miniIconRect = NSInsetRect(miniFrame, ICON_INSET, iconVInset);
+            // Use smaller inset for stacked buttons so icons are bigger
+            CGFloat iconHInset = hasMaximize ? STACKED_ICON_INSET : ICON_INSET;
+            CGFloat iconVInset = hasMaximize ? STACKED_ICON_INSET / 2.0 : ICON_INSET;
+            NSRect miniIconRect = NSInsetRect(miniFrame, iconHInset, iconVInset);
             [URSThemeIntegration drawMinimizeIconInRect:miniIconRect withColor:iconColor];
             NSLog(@"Drew miniaturize button at: %@", NSStringFromRect(miniFrame));
         }
@@ -1424,8 +1428,9 @@ typedef NS_ENUM(NSInteger, TitleBarButtonPosition) {
                                hovered:zoomHovered];
 
             // Draw plus icon (only on active windows)
+            // Use smaller inset for stacked buttons so icons are bigger
             if (iconColor) {
-                NSRect iconRect = NSInsetRect(zoomFrame, ICON_INSET, ICON_INSET / 2.0);
+                NSRect iconRect = NSInsetRect(zoomFrame, STACKED_ICON_INSET, STACKED_ICON_INSET / 2.0);
                 [self drawMaximizeIconInRect:iconRect withColor:iconColor];
             }
 
@@ -1462,9 +1467,11 @@ typedef NS_ENUM(NSInteger, TitleBarButtonPosition) {
                                hovered:miniHovered];
 
             // Draw minus icon (only on active windows)
+            // Use smaller inset for stacked buttons so icons are bigger
             if (iconColor) {
-                CGFloat iconVInset = hasMaximize ? ICON_INSET / 2.0 : ICON_INSET;
-                NSRect iconRect = NSInsetRect(miniFrame, ICON_INSET, iconVInset);
+                CGFloat iconHInset = hasMaximize ? STACKED_ICON_INSET : ICON_INSET;
+                CGFloat iconVInset = hasMaximize ? STACKED_ICON_INSET / 2.0 : ICON_INSET;
+                NSRect iconRect = NSInsetRect(miniFrame, iconHInset, iconVInset);
                 [self drawMinimizeIconInRect:iconRect withColor:iconColor];
             }
 
