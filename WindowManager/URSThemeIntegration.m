@@ -317,6 +317,11 @@ typedef NS_ENUM(NSInteger, TitleBarButtonPosition) {
 + (void)drawMinimizeIconInRect:(NSRect)rect withColor:(NSColor *)color {
     if (!color) return;
 
+    // Detect stacked button (small height) - use bolder/bigger icon
+    BOOL isStacked = (NSHeight(rect) < 10);
+    CGFloat strokeWidth = isStacked ? 2.0 : ICON_STROKE;
+    CGFloat insetFactor = isStacked ? 0.05 : 0.15;  // Less inset = bigger icon for stacked
+
     // Make icon rect square by adding extra horizontal inset if needed
     CGFloat extraHInset = (NSWidth(rect) - NSHeight(rect)) / 2.0;
     if (extraHInset > 0) {
@@ -324,11 +329,11 @@ typedef NS_ENUM(NSInteger, TitleBarButtonPosition) {
     }
 
     NSBezierPath *path = [NSBezierPath bezierPath];
-    [path setLineWidth:ICON_STROKE];
+    [path setLineWidth:strokeWidth];
     [path setLineCapStyle:NSRoundLineCapStyle];
 
     // Horizontal line (minus symbol)
-    CGFloat inset = NSWidth(rect) * 0.15;  // Match close icon inset for consistent sizing
+    CGFloat inset = NSWidth(rect) * insetFactor;
     CGFloat midY = NSMidY(rect);
     [path moveToPoint:NSMakePoint(NSMinX(rect) + inset, midY)];
     [path lineToPoint:NSMakePoint(NSMaxX(rect) - inset, midY)];
@@ -341,6 +346,11 @@ typedef NS_ENUM(NSInteger, TitleBarButtonPosition) {
 + (void)drawMaximizeIconInRect:(NSRect)rect withColor:(NSColor *)color {
     if (!color) return;
 
+    // Detect stacked button (small height) - use bolder/bigger icon
+    BOOL isStacked = (NSHeight(rect) < 10);
+    CGFloat strokeWidth = isStacked ? 2.0 : ICON_STROKE;
+    CGFloat insetFactor = isStacked ? 0.05 : 0.15;  // Less inset = bigger icon for stacked
+
     // Make icon rect square by adding extra horizontal inset if needed
     CGFloat extraHInset = (NSWidth(rect) - NSHeight(rect)) / 2.0;
     if (extraHInset > 0) {
@@ -348,11 +358,11 @@ typedef NS_ENUM(NSInteger, TitleBarButtonPosition) {
     }
 
     NSBezierPath *path = [NSBezierPath bezierPath];
-    [path setLineWidth:ICON_STROKE];
+    [path setLineWidth:strokeWidth];
     [path setLineCapStyle:NSRoundLineCapStyle];
 
     // Plus symbol
-    CGFloat inset = NSWidth(rect) * 0.15;  // Match close icon inset for consistent sizing
+    CGFloat inset = NSWidth(rect) * insetFactor;
     CGFloat midX = NSMidX(rect);
     CGFloat midY = NSMidY(rect);
 
