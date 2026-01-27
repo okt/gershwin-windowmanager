@@ -7,8 +7,10 @@
 
 #import "URSThemeIntegration.h"
 #import "URSRenderingContext.h"
+#import "URSCompositingManager.h"
 #import <XCBKit/XCBConnection.h>
 #import <XCBKit/XCBFrame.h>
+#import <XCBKit/XCBScreen.h>
 #import <cairo/cairo.h>
 #import <cairo/cairo-xcb.h>
 #import <objc/runtime.h>
@@ -48,6 +50,65 @@ static const CGFloat ICON_INSET = 8.0;                // Icon inset from button 
     if (self == [URSThemeIntegration class]) {
         fixedSizeWindows = [[NSMutableSet alloc] init];
     }
+}
+
+#pragma mark - ARGB Visual Support for Compositor Alpha
+
+// Find 32-bit ARGB visual for alpha transparency support
+// Returns 0 if no ARGB visual is found
++ (xcb_visualid_t)findARGBVisualForScreen:(XCBScreen *)screen connection:(XCBConnection *)connection {
+    if (!screen || !connection) return 0;
+
+    xcb_connection_t *conn = [connection connection];
+    xcb_screen_t *xcbScreen = [screen screen];
+    if (!xcbScreen) return 0;
+
+    // Iterate through all depths and visuals to find a 32-bit TrueColor visual
+    xcb_depth_iterator_t depth_iter = xcb_screen_allowed_depths_iterator(xcbScreen);
+
+    for (; depth_iter.rem; xcb_depth_next(&depth_iter)) {
+        if (depth_iter.data->depth != 32) continue;
+
+        xcb_visualtype_iterator_t visual_iter = xcb_depth_visuals_iterator(depth_iter.data);
+
+        for (; visual_iter.rem; xcb_visualtype_next(&visual_iter)) {
+            xcb_visualtype_t *visual = visual_iter.data;
+
+            // Look for TrueColor with 8-bit alpha channel
+            // TrueColor class is 4, DirectColor is 5
+            if (visual->_class == XCB_VISUAL_CLASS_TRUE_COLOR) {
+                // Check that it has reasonable bit masks for ARGB
+                // 32-bit visuals typically have 8 bits per channel
+                NSLog(@"[URSThemeIntegration] Found 32-bit TrueColor visual: 0x%x", visual->visual_id);
+                return visual->visual_id;
+            }
+        }
+    }
+
+    NSLog(@"[URSThemeIntegration] No 32-bit ARGB visual found");
+    return 0;
+}
+
+// Get xcb_visualtype_t for a given visual ID
++ (xcb_visualtype_t *)findVisualTypeForId:(xcb_visualid_t)visualId screen:(XCBScreen *)screen {
+    if (!screen || visualId == 0) return NULL;
+
+    xcb_screen_t *xcbScreen = [screen screen];
+    if (!xcbScreen) return NULL;
+
+    xcb_depth_iterator_t depth_iter = xcb_screen_allowed_depths_iterator(xcbScreen);
+
+    for (; depth_iter.rem; xcb_depth_next(&depth_iter)) {
+        xcb_visualtype_iterator_t visual_iter = xcb_depth_visuals_iterator(depth_iter.data);
+
+        for (; visual_iter.rem; xcb_visualtype_next(&visual_iter)) {
+            if (visual_iter.data->visual_id == visualId) {
+                return visual_iter.data;
+            }
+        }
+    }
+
+    return NULL;
 }
 
 + (void)registerFixedSizeWindow:(xcb_window_t)windowId {
@@ -587,10 +648,20 @@ typedef NS_ENUM(NSInteger, TitleBarButtonPosition) {
 
         [titlebarImage lockFocus];
 
-        // Clear background with titlebar background color (not transparent!)
-        // Using transparent would leave garbage pixels from uninitialized pixmap
-        [[NSColor lightGrayColor] set];
-        NSRectFill(NSMakeRect(0, 0, titlebarSize.width, titlebarSize.height));
+        // Check if compositor is active for alpha transparency support
+        BOOL compositorActive = [[URSCompositingManager sharedManager] compositingActive];
+
+        // Clear background - use transparent for compositor mode to support rounded corner alpha
+        // Non-compositor mode uses opaque color to prevent garbage pixels
+        if (compositorActive) {
+            // Use NSCompositeCopy to truly clear to transparent (NSRectFill composites over existing content)
+            [[NSColor clearColor] set];
+            NSRectFillUsingOperation(NSMakeRect(0, 0, titlebarSize.width, titlebarSize.height), NSCompositeCopy);
+            NSLog(@"[URSThemeIntegration] Using transparent background for compositor alpha support");
+        } else {
+            [[NSColor lightGrayColor] set];
+            NSRectFill(NSMakeRect(0, 0, titlebarSize.width, titlebarSize.height));
+        }
 
         // Define the titlebar rect
         NSRect titlebarRect = NSMakeRect(0, 0, titlebarSize.width, titlebarSize.height);
@@ -739,8 +810,49 @@ typedef NS_ENUM(NSInteger, TitleBarButtonPosition) {
         return NO;
     }
 
-    NSLog(@"Creating Cairo surface for titlebar pixmap: %u, size: %dx%d",
-          titlebar.pixmap, (int)image.size.width, (int)image.size.height);
+    // Check if compositor is active for ARGB visual support
+    BOOL compositorActive = [[URSCompositingManager sharedManager] compositingActive];
+    xcb_visualtype_t *visualType = titlebar.visual.visualType;
+
+    // Set up ARGB visual for Cairo if compositor is active
+    // Note: The titlebar window and pixmap are now created with 32-bit depth in XCBFrame.m
+    // We just need to get the correct visual type for Cairo surface creation
+    if (compositorActive) {
+        XCBScreen *screen = [titlebar onScreen];
+        if (!screen) screen = [titlebar screen];
+
+        if (screen) {
+            // Check if titlebar already has ARGB visual configured (set by XCBFrame)
+            xcb_visualid_t argbVisualId = [titlebar argbVisualId];
+
+            // If not already configured, set it up (fallback for windows created before this change)
+            if (argbVisualId == 0) {
+                argbVisualId = [self findARGBVisualForScreen:screen connection:titlebar.connection];
+
+                if (argbVisualId != 0) {
+                    // Set ARGB visual on titlebar for 32-bit pixmap support
+                    [titlebar setUse32BitDepth:YES];
+                    [titlebar setArgbVisualId:argbVisualId];
+
+                    // Recreate pixmap with 32-bit depth
+                    [titlebar createPixmap];
+                    NSLog(@"[URSThemeIntegration] Created 32-bit pixmap for titlebar (fallback path)");
+                }
+            }
+
+            // Get the ARGB visual type for Cairo surface
+            if (argbVisualId != 0) {
+                xcb_visualtype_t *argbVisualType = [self findVisualTypeForId:argbVisualId screen:screen];
+                if (argbVisualType) {
+                    visualType = argbVisualType;
+                    NSLog(@"[URSThemeIntegration] Using 32-bit ARGB visual for Cairo surface (id: 0x%x)", argbVisualId);
+                }
+            }
+        }
+    }
+
+    NSLog(@"Creating Cairo surface for titlebar pixmap: %u, size: %dx%d, compositor: %d",
+          titlebar.pixmap, (int)image.size.width, (int)image.size.height, compositorActive);
 
     // DEBUG: Check bitmap format and sample pixel data
     NSLog(@"Bitmap format: %ldx%ld, bitsPerPixel=%ld, bytesPerRow=%ld, colorSpace=%@, format=%u",
@@ -779,10 +891,11 @@ typedef NS_ENUM(NSInteger, TitleBarButtonPosition) {
     }
 
     // Create Cairo surface from XCB titlebar pixmap
+    // Use ARGB visual when compositor is active for alpha transparency
     cairo_surface_t *x11Surface = cairo_xcb_surface_create(
         [titlebar.connection connection],
         titlebar.pixmap,
-        titlebar.visual.visualType,
+        visualType,
         (int)image.size.width,
         (int)image.size.height
     );
@@ -799,27 +912,55 @@ typedef NS_ENUM(NSInteger, TitleBarButtonPosition) {
     cairo_t *ctx = cairo_create(x11Surface);
 
     // Create Cairo image surface from bitmap data
-    // NOTE: NSBitmapImageRep uses RGBA but Cairo ARGB32 expects BGRA, so we need to convert
+    // Cairo ARGB32 expects pre-multiplied BGRA in memory (B, G, R, A bytes on little-endian)
     unsigned char *bitmapPixels = [bitmap bitmapData];
     int width = [bitmap pixelsWide];
     int height = [bitmap pixelsHigh];
     int bytesPerRow = [bitmap bytesPerRow];
 
-    // OPTIMIZATION: Convert RGBA to BGRA using 32-bit word operations (4x faster)
-    // Process entire rows at once, handling stride properly
+    // Check bitmap format to determine correct conversion
+    // NSAlphaFirstBitmapFormat (1): Alpha is first byte (ARGB in memory)
+    // Otherwise: Alpha is last byte (RGBA in memory)
+    NSBitmapFormat bitmapFormat = [bitmap bitmapFormat];
+    BOOL alphaFirst = (bitmapFormat & NSAlphaFirstBitmapFormat) != 0;
+
+    NSLog(@"[URSThemeIntegration] Bitmap format: 0x%x, alphaFirst: %d", (unsigned)bitmapFormat, alphaFirst);
+
+    // Convert to Cairo ARGB32 format (BGRA in memory on little-endian)
     int rowPixels = width;
     for (int y = 0; y < height; y++) {
         uint32_t *rowPtr = (uint32_t *)(bitmapPixels + (y * bytesPerRow));
         for (int x = 0; x < rowPixels; x++) {
             uint32_t pixel = rowPtr[x];
-            // RGBA (little-endian memory: A B G R) -> BGRA (little-endian: A R G B)
-            // Extract channels and reassemble
-            uint32_t r = (pixel >> 0) & 0xFF;
-            uint32_t g = (pixel >> 8) & 0xFF;
-            uint32_t b = (pixel >> 16) & 0xFF;
-            uint32_t a = (pixel >> 24) & 0xFF;
-            // BGRA format: B in lowest byte, then G, R, A
-            rowPtr[x] = (a << 24) | (r << 16) | (g << 8) | b;
+            uint32_t r, g, b, a;
+
+            if (alphaFirst) {
+                // ARGB in memory: A, R, G, B bytes
+                // On little-endian read as uint32_t: B<<24 | G<<16 | R<<8 | A
+                a = (pixel >> 0) & 0xFF;
+                r = (pixel >> 8) & 0xFF;
+                g = (pixel >> 16) & 0xFF;
+                b = (pixel >> 24) & 0xFF;
+            } else {
+                // RGBA in memory: R, G, B, A bytes
+                // On little-endian read as uint32_t: A<<24 | B<<16 | G<<8 | R
+                r = (pixel >> 0) & 0xFF;
+                g = (pixel >> 8) & 0xFF;
+                b = (pixel >> 16) & 0xFF;
+                a = (pixel >> 24) & 0xFF;
+            }
+
+            // Pre-multiply RGB by alpha for Cairo ARGB32 format
+            // Cairo expects pre-multiplied alpha: R_out = R * (A / 255)
+            // This fixes transparent areas like clearColor (255,255,255,0) -> (0,0,0,0)
+            if (a < 255) {
+                r = (r * a) / 255;
+                g = (g * a) / 255;
+                b = (b * a) / 255;
+            }
+
+            // Cairo ARGB32 on little-endian: B, G, R, A bytes = B | G<<8 | R<<16 | A<<24
+            rowPtr[x] = b | (g << 8) | (r << 16) | (a << 24);
         }
     }
 
@@ -842,8 +983,9 @@ typedef NS_ENUM(NSInteger, TitleBarButtonPosition) {
     NSLog(@"Painting GSTheme image to X11 surface...");
 
     // Paint GSTheme image to X11 surface using SOURCE operator
-    // SOURCE completely replaces destination pixels (no compositing)
-    // This prevents old pixmap garbage from showing through
+    // SOURCE completely replaces destination pixels with source (including alpha values)
+    // The X11 compositor then uses those alpha values when compositing windows
+    // This works for both compositor and non-compositor modes
     cairo_set_operator(ctx, CAIRO_OPERATOR_SOURCE);
     cairo_set_source_surface(ctx, imageSurface, 0, 0);
     cairo_paint(ctx);
@@ -888,23 +1030,48 @@ typedef NS_ENUM(NSInteger, TitleBarButtonPosition) {
                 int dimmedHeight = [dimmedBitmap pixelsHigh];
                 int dimmedBytesPerRow = [dimmedBitmap bytesPerRow];
 
-                // OPTIMIZATION: Convert RGBA to BGRA using 32-bit word operations
+                // Check bitmap format for dimmed image
+                NSBitmapFormat dimmedFormat = [dimmedBitmap bitmapFormat];
+                BOOL dimmedAlphaFirst = (dimmedFormat & NSAlphaFirstBitmapFormat) != 0;
+
+                // Convert to Cairo ARGB32 format (BGRA in memory on little-endian)
                 for (int y = 0; y < dimmedHeight; y++) {
                     uint32_t *rowPtr = (uint32_t *)(dimmedPixels + (y * dimmedBytesPerRow));
                     for (int x = 0; x < dimmedWidth; x++) {
                         uint32_t pixel = rowPtr[x];
-                        uint32_t r = (pixel >> 0) & 0xFF;
-                        uint32_t g = (pixel >> 8) & 0xFF;
-                        uint32_t b = (pixel >> 16) & 0xFF;
-                        uint32_t a = (pixel >> 24) & 0xFF;
-                        rowPtr[x] = (a << 24) | (r << 16) | (g << 8) | b;
+                        uint32_t r, g, b, a;
+
+                        if (dimmedAlphaFirst) {
+                            // ARGB in memory
+                            a = (pixel >> 0) & 0xFF;
+                            r = (pixel >> 8) & 0xFF;
+                            g = (pixel >> 16) & 0xFF;
+                            b = (pixel >> 24) & 0xFF;
+                        } else {
+                            // RGBA in memory
+                            r = (pixel >> 0) & 0xFF;
+                            g = (pixel >> 8) & 0xFF;
+                            b = (pixel >> 16) & 0xFF;
+                            a = (pixel >> 24) & 0xFF;
+                        }
+
+                        // Pre-multiply RGB by alpha for Cairo ARGB32 format
+                        if (a < 255) {
+                            r = (r * a) / 255;
+                            g = (g * a) / 255;
+                            b = (b * a) / 255;
+                        }
+
+                        // Cairo ARGB32 on little-endian: B, G, R, A bytes
+                        rowPtr[x] = b | (g << 8) | (r << 16) | (a << 24);
                     }
                 }
 
+                // Use ARGB visual for dPixmap when compositor is active
                 cairo_surface_t *dSurface = cairo_xcb_surface_create(
                     [titlebar.connection connection],
                     dPixmap,
-                    titlebar.visual.visualType,
+                    visualType,  // Uses ARGB visual when compositor active
                     dimmedWidth,
                     dimmedHeight
                 );
@@ -921,6 +1088,7 @@ typedef NS_ENUM(NSInteger, TitleBarButtonPosition) {
                     );
 
                     if (cairo_surface_status(dImageSurface) == CAIRO_STATUS_SUCCESS) {
+                        // Use SOURCE to replace destination with source (including alpha)
                         cairo_set_operator(dCtx, CAIRO_OPERATOR_SOURCE);
                         cairo_set_source_surface(dCtx, dImageSurface, 0, 0);
                         cairo_paint(dCtx);
@@ -1134,13 +1302,24 @@ typedef NS_ENUM(NSInteger, TitleBarButtonPosition) {
         // We check for theme-specific methods first, then fall back to base.
         
         NSRect titleBarRect = NSMakeRect(0, 0, titlebarSize.width, titlebarSize.height);
-        
-        // Pre-fill the entire rect with the theme's border/control stroke color
-        // This ensures no black pixels remain at edges where the theme may not draw
-        // (e.g., Eau's drawTitleBarBackground insets by 1 pixel)
-        NSColor *prefillColor = [NSColor colorWithCalibratedWhite:0.4 alpha:1.0]; // Grey40 #666666 - matches Eau border
-        [prefillColor set];
-        NSRectFill(titleBarRect);
+
+        // Check if compositor is active for alpha transparency support
+        BOOL compositorActive = [[URSCompositingManager sharedManager] compositingActive];
+
+        // Pre-fill the entire rect
+        // In compositor mode, use clearColor for transparent rounded corners
+        // Otherwise, use grey to ensure no garbage pixels at theme edges
+        if (compositorActive) {
+            // Use NSCompositeCopy to truly clear to transparent
+            [[NSColor clearColor] set];
+            NSRectFillUsingOperation(titleBarRect, NSCompositeCopy);
+            NSLog(@"[URSThemeIntegration] Using transparent prefill for compositor alpha support");
+        } else {
+            // Grey40 #666666 - matches Eau border, prevents garbage at edges
+            NSColor *prefillColor = [NSColor colorWithCalibratedWhite:0.4 alpha:1.0];
+            [prefillColor set];
+            NSRectFill(titleBarRect);
+        }
         
         NSDebugLog(@"DEBUG: Calling theme titlebar drawing with rect=%@", NSStringFromRect(titleBarRect));
         
