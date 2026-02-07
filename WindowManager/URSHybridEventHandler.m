@@ -1121,6 +1121,13 @@
                 // Register as fixed-size window (for button hiding in GSTheme rendering)
                 [URSThemeIntegration registerFixedSizeWindow:clientWindowId];
 
+                // Also mark client window as non-resizable so WM won't offer resize or attempt programmatic resizes
+                XCBWindow *clientW = [connection windowForXCBId:clientWindowId];
+                if (clientW) {
+                    [clientW setCanResize:NO];
+                    NSLog(@"Marked client window %u as non-resizable (canResize=NO)", clientWindowId);
+                }
+
                 // Find the frame for this client window and set its border to 0
                 NSDictionary *windowsMap = [connection windowsMap];
                 for (NSString *mapWindowId in windowsMap) {
@@ -1174,13 +1181,27 @@
         xcb_get_geometry_reply_t *geom_reply = xcb_get_geometry_reply([connection connection], geom_cookie, NULL);
         
         if (geom_reply) {
-            // Check if window is desktop or explicitly fullscreen - skip WM defaults for these
-            EWMHService *ewmhService = [EWMHService sharedInstanceWithConnection:connection];
-            
-            // Create an XCBWindow object from the xcb_window_t for EWMH queries
-            XCBWindow *queryWindow = [[XCBWindow alloc] initWithXCBWindow:clientWindowId andConnection:connection];
+            // Respect ICCCM WM_NORMAL_HINTS: if the client is fixed-size, do not apply WM defaults
+            xcb_size_hints_t sizeHints;
+            if (xcb_icccm_get_wm_normal_hints_reply([connection connection],
+                                                    xcb_icccm_get_wm_normal_hints([connection connection], clientWindowId),
+                                                    &sizeHints,
+                                                    NULL)) {
+                if ((sizeHints.flags & XCB_ICCCM_SIZE_HINT_P_MIN_SIZE) &&
+                    (sizeHints.flags & XCB_ICCCM_SIZE_HINT_P_MAX_SIZE) &&
+                    sizeHints.min_width == sizeHints.max_width &&
+                    sizeHints.min_height == sizeHints.max_height) {
+                    NSLog(@"resizeWindowTo70Percent: client %u is fixed-size; skipping WM defaults", clientWindowId);
+                    free(geom_reply);
+                    return;
+                }
+            }
+
             
             // Check window type
+            EWMHService *ewmhService = [EWMHService sharedInstanceWithConnection:connection];
+            XCBWindow *queryWindow = [[XCBWindow alloc] initWithXCBWindow:clientWindowId andConnection:connection];
+
             void *windowTypeReply = [ewmhService getProperty:[ewmhService EWMHWMWindowType]
                                                 propertyType:XCB_ATOM_ATOM
                                                    forWindow:queryWindow

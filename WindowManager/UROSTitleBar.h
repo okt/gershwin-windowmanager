@@ -24,6 +24,9 @@
 @property (assign, nonatomic) NSRect frame;
 @property (assign, nonatomic) BOOL isActive;
 
+// The client window id this titlebar decorates (used to determine fixed-size state)
+@property (assign, nonatomic) xcb_window_t parentClientWindow;
+
 // Initialization
 - (instancetype)initWithConnection:(XCBConnection*)connection
                              frame:(NSRect)frame

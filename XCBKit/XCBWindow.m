@@ -1131,22 +1131,30 @@
 
     if (anEvent->value_mask & XCB_CONFIG_WINDOW_WIDTH)
     {
-        config_frame_mask |= XCB_CONFIG_WINDOW_WIDTH;
-        config_win_mask |= XCB_CONFIG_WINDOW_WIDTH;
-        config_title_mask |= XCB_CONFIG_WINDOW_WIDTH;
-        config_frame_vals[frame_i++] = anEvent->width;
-        config_win_vals[win_i++] = anEvent->width;
-        config_title_vals[title_i++] = anEvent->width;
-        frameRect.size.width = anEvent->width;
+        if ([self canResize]) {
+            config_frame_mask |= XCB_CONFIG_WINDOW_WIDTH;
+            config_win_mask |= XCB_CONFIG_WINDOW_WIDTH;
+            config_title_mask |= XCB_CONFIG_WINDOW_WIDTH;
+            config_frame_vals[frame_i++] = anEvent->width;
+            config_win_vals[win_i++] = anEvent->width;
+            config_title_vals[title_i++] = anEvent->width;
+            frameRect.size.width = anEvent->width;
+        } else {
+            NSDebugLog(@"Ignoring width change request in ConfigureRequest for non-resizable window %u", window);
+        }
     }
 
     if (anEvent->value_mask & XCB_CONFIG_WINDOW_HEIGHT)
     {
-        config_frame_mask |= XCB_CONFIG_WINDOW_HEIGHT;
-        config_win_mask |= XCB_CONFIG_WINDOW_HEIGHT;
-        config_frame_vals[frame_i++] = anEvent->height + titleHeight;
-        config_win_vals[win_i++] = anEvent->height;
-        frameRect.size.height = anEvent->height + titleHeight;
+        if ([self canResize]) {
+            config_frame_mask |= XCB_CONFIG_WINDOW_HEIGHT;
+            config_win_mask |= XCB_CONFIG_WINDOW_HEIGHT;
+            config_frame_vals[frame_i++] = anEvent->height + titleHeight;
+            config_win_vals[win_i++] = anEvent->height;
+            frameRect.size.height = anEvent->height + titleHeight;
+        } else {
+            NSDebugLog(@"Ignoring height change request in ConfigureRequest for non-resizable window %u", window);
+        }
     }
 
     if (anEvent->value_mask & XCB_CONFIG_WINDOW_BORDER_WIDTH)

@@ -7,6 +7,7 @@
 //
 
 #import "UROSTitleBar.h"
+#import "URSThemeIntegration.h"
 #import <cairo/cairo.h>
 #import <cairo/cairo-xcb.h>
 #import <xcb/xcb.h>
@@ -36,6 +37,9 @@
 }
 
 - (void)createTitlebarWindow:(xcb_window_t)parentWindow {
+    // Remember the client window id so rendering can consult fixed-size state
+    self.parentClientWindow = parentWindow;
+
     // Get the screen info
     XCBScreen *screen = [[self.connection screens] objectAtIndex:0];
 
@@ -105,8 +109,15 @@
 
         // Use GSTheme to draw titlebar
         NSRect drawRect = NSMakeRect(0, 0, self.frame.size.width, self.frame.size.height);
-        NSUInteger styleMask = NSTitledWindowMask | NSClosableWindowMask | NSResizableWindowMask;
+
+        // If the client is a fixed-size window (per URSThemeIntegration), only show close button
+        BOOL isFixedSizeClient = (self.parentClientWindow != 0) && [URSThemeIntegration isFixedSizeWindow:self.parentClientWindow];
+        NSUInteger styleMask = isFixedSizeClient ? (NSTitledWindowMask | NSClosableWindowMask) : (NSTitledWindowMask | NSClosableWindowMask | NSResizableWindowMask);
         GSThemeControlState state = self.isActive ? GSThemeNormalState : GSThemeSelectedState;
+
+        if (isFixedSizeClient) {
+            NSLog(@"UROSTitleBar: Rendering fixed-size titlebar (close-only) for client %u", self.parentClientWindow);
+        }
 
         [theme drawWindowBorder:drawRect
                       withFrame:drawRect
@@ -341,13 +352,23 @@
             // Save pre-maximize rect for restore
             [frame setOldRect:[frame windowRect]];
 
-            // Use programmatic resize that follows the same code path as manual resize
-            XCBRect targetRect = XCBMakeRect(XCBMakePoint(workareaX, workareaY),
-                                              XCBMakeSize(workareaWidth, workareaHeight));
-            [frame programmaticResizeToRect:targetRect];
-            [frame setIsMaximized:YES];
-            [frame setMaximizedHorizontally:YES];
-            [frame setMaximizedVertically:YES];
+            // Respect client resizability
+            XCBWindow *client = (XCBWindow*)[frame childWindowForKey:ClientWindow];
+            if (client && ![client canResize]) {
+                NSLog(@"UROSTitleBar: Refusing to maximize non-resizable client %u", [client window]);
+            } else {
+                // Use programmatic resize that follows the same code path as manual resize
+                XCBRect targetRect = XCBMakeRect(XCBMakePoint(workareaX, workareaY),
+                                                  XCBMakeSize(workareaWidth, workareaHeight));
+                [frame programmaticResizeToRect:targetRect];
+                [frame setIsMaximized:YES];
+                [frame setMaximizedHorizontally:YES];
+                [frame setMaximizedVertically:YES];
+
+                // Update resize zone positions and shape mask for new dimensions
+                [frame updateAllResizeZonePositions];
+                [frame applyRoundedCornersShapeMask];
+            }
 
             // Update resize zone positions and shape mask for new dimensions
             [frame updateAllResizeZonePositions];

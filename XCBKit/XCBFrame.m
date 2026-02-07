@@ -95,6 +95,18 @@ static void sendSyntheticConfigureNotify(xcb_connection_t *conn,
     [self setMinHeightHint:sizeHints->min_height];
     [self setMinWidthHint:sizeHints->min_width];
 
+    // Respect ICCCM WM_NORMAL_HINTS: if min == max for both dimensions, treat as non-resizable
+    BOOL fixedSizeWindow = NO;
+    if ((sizeHints->flags & XCB_ICCCM_SIZE_HINT_P_MIN_SIZE) &&
+        (sizeHints->flags & XCB_ICCCM_SIZE_HINT_P_MAX_SIZE) &&
+        sizeHints->min_width == sizeHints->max_width &&
+        sizeHints->min_height == sizeHints->max_height)
+    {
+        fixedSizeWindow = YES;
+        NSLog(@"[XCBFrame] Detected fixed-size (non-resizable) client window %u (min==max)", [aClientWindow window]);
+        // Disable resizing for the client window so WM won't offer resize handles etc.
+        [aClientWindow setCanResize:NO];
+    }
 
     if (minWidthHint > [aClientWindow windowRect].size.width)
     {
@@ -703,6 +715,11 @@ void resizeFromRightForEvent(xcb_motion_notify_event_t *anEvent,
                              int minW)
 {
     XCBWindow* clientWindow = [frame childWindowForKey:ClientWindow];
+    // Respect ICCCM: if client is non-resizable, ignore interactive resize
+    if (clientWindow && ![clientWindow canResize]) {
+        NSDebugLog(@"Ignoring interactive right-edge resize for non-resizable client %u", [clientWindow window]);
+        return;
+    }
     XCBTitleBar* titleBar = (XCBTitleBar*)[frame childWindowForKey:TitleBar];
     //xcb_connection_t *connection = [[frame connection] connection];
 
@@ -799,6 +816,11 @@ void resizeFromLeftForEvent(xcb_motion_notify_event_t *anEvent,
                             int minW)
 {
     XCBWindow* clientWindow = [frame childWindowForKey:ClientWindow];
+    // Respect ICCCM: if client is non-resizable, ignore interactive resize
+    if (clientWindow && ![clientWindow canResize]) {
+        NSDebugLog(@"Ignoring interactive left-edge resize for non-resizable client %u", [clientWindow window]);
+        return;
+    }
     XCBTitleBar* titleBar = (XCBTitleBar*)[frame childWindowForKey:TitleBar];
     //xcb_connection_t *connection = [[frame connection] connection];
 
@@ -924,6 +946,11 @@ void resizeFromBottomForEvent(xcb_motion_notify_event_t *anEvent,
                               uint16_t titleBarHeight)
 {
     XCBWindow* clientWindow = [frame childWindowForKey:ClientWindow];
+    // Respect ICCCM: if client is non-resizable, ignore interactive resize
+    if (clientWindow && ![clientWindow canResize]) {
+        NSDebugLog(@"Ignoring interactive bottom-edge resize for non-resizable client %u", [clientWindow window]);
+        return;
+    }
     //xcb_connection_t *connection = [[frame connection] connection];
 
     XCBRect rect = [frame windowRect];
@@ -1007,6 +1034,11 @@ void resizeFromTopForEvent(xcb_motion_notify_event_t *anEvent,
                            uint16_t titleBarHeight)
 {
     XCBWindow* clientWindow = [frame childWindowForKey:ClientWindow];
+    // Respect ICCCM: if client is non-resizable, ignore interactive resize
+    if (clientWindow && ![clientWindow canResize]) {
+        NSDebugLog(@"Ignoring interactive top-edge resize for non-resizable client %u", [clientWindow window]);
+        return;
+    }
     XCBTitleBar* titleBar = (XCBTitleBar*)[frame childWindowForKey:TitleBar];
     //xcb_connection_t *connection = [[frame connection] connection];
 
@@ -1128,6 +1160,11 @@ void resizeFromAngleForEvent(xcb_motion_notify_event_t *anEvent,
                              uint16_t titleBarHeight)
 {
     XCBWindow* clientWindow = [frame childWindowForKey:ClientWindow];
+    // Respect ICCCM: if client is non-resizable, ignore interactive resize
+    if (clientWindow && ![clientWindow canResize]) {
+        NSDebugLog(@"Ignoring interactive corner resize for non-resizable client %u", [clientWindow window]);
+        return;
+    }
     XCBTitleBar* titleBar = (XCBTitleBar*)[frame childWindowForKey:TitleBar];
     //xcb_connection_t *connection = [[frame connection] connection];
 
@@ -1289,6 +1326,12 @@ void resizeFromAngleForEvent(xcb_motion_notify_event_t *anEvent,
     XCBWindow *clientWindow = [self childWindowForKey:ClientWindow];
     XCBTitleBar *titleBar = (XCBTitleBar*)[self childWindowForKey:TitleBar];
     if (!clientWindow || !titleBar) return;
+
+    // Enforce ICCCM / WM_NORMAL_HINTS: do not resize non-resizable (fixed-size) clients
+    if (![clientWindow canResize]) {
+        NSLog(@"[XCBFrame] Refusing programmatic resize for non-resizable client %u", [clientWindow window]);
+        return;
+    }
 
     xcb_connection_t *conn = [connection connection];
 

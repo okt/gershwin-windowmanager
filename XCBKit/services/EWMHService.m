@@ -839,26 +839,36 @@
                     // Save pre-maximize rect for restore
                     [frame setOldRect:[frame windowRect]];
 
-                    /*** Use programmaticResizeToRect - keeps width, expands to workarea width ***/
-                    XCBRect targetRect = XCBMakeRect(
-                        XCBMakePoint(workareaX, [frame windowRect].position.y),
-                        XCBMakeSize(workareaWidth, [frame windowRect].size.height));
-                    [frame programmaticResizeToRect:targetRect];
+                    // Respect client resizability: do nothing if the client is non-resizable
+                    XCBWindow *clientWin = (XCBWindow*)[frame childWindowForKey:ClientWindow];
+                    if (clientWin && ![clientWin canResize]) {
+                        NSLog(@"[EWMH] Skipping horizontal maximize for non-resizable client %u", [clientWin window]);
+                    } else {
+                        /*** Use programmaticResizeToRect - keeps width, expands to workarea width ***/
+                        XCBRect targetRect = XCBMakeRect(
+                            XCBMakePoint(workareaX, [frame windowRect].position.y),
+                            XCBMakeSize(workareaWidth, [frame windowRect].size.height));
+                        [frame programmaticResizeToRect:targetRect];
 
-                    // Update resize zones and shape mask
-                    [frame updateAllResizeZonePositions];
-                    [frame applyRoundedCornersShapeMask];
+                        // Update resize zones and shape mask
+                        [frame updateAllResizeZonePositions];
+                        [frame applyRoundedCornersShapeMask];
 
-                    [titleBar drawTitleBarComponents];
+                        [titleBar drawTitleBarComponents];
+                    }
 
                     frame = nil;
                     titleBar = nil;
                 }
                 else
                 {
-                    size = XCBMakeSize(workareaWidth, [aWindow windowRect].size.height);
-                    position = XCBMakePoint(workareaX, [aWindow windowRect].position.y);
-                    [aWindow maximizeToSize:size andPosition:position];
+                    if (![aWindow canResize]) {
+                        NSLog(@"[EWMH] Skipping horizontal maximize for non-resizable undecorated client %u", [aWindow window]);
+                    } else {
+                        size = XCBMakeSize(workareaWidth, [aWindow windowRect].size.height);
+                        position = XCBMakePoint(workareaX, [aWindow windowRect].position.y);
+                        [aWindow maximizeToSize:size andPosition:position];
+                    }
                 }
 
                 [aWindow setMaximizedHorizontally:maxHorz];
@@ -901,26 +911,36 @@
                     // Save pre-maximize rect for restore
                     [frame setOldRect:[frame windowRect]];
 
-                    /*** Use programmaticResizeToRect - keeps width, expands to workarea height ***/
-                    XCBRect targetRect = XCBMakeRect(
-                        XCBMakePoint([frame windowRect].position.x, workareaY),
-                        XCBMakeSize([frame windowRect].size.width, workareaHeight));
-                    [frame programmaticResizeToRect:targetRect];
+                    // Respect client resizability: do nothing if the client is non-resizable
+                    XCBWindow *clientWin = (XCBWindow*)[frame childWindowForKey:ClientWindow];
+                    if (clientWin && ![clientWin canResize]) {
+                        NSLog(@"[EWMH] Skipping vertical maximize for non-resizable client %u", [clientWin window]);
+                    } else {
+                        /*** Use programmaticResizeToRect - keeps width, expands to workarea height ***/
+                        XCBRect targetRect = XCBMakeRect(
+                            XCBMakePoint([frame windowRect].position.x, workareaY),
+                            XCBMakeSize([frame windowRect].size.width, workareaHeight));
+                        [frame programmaticResizeToRect:targetRect];
 
-                    // Update resize zones and shape mask
-                    [frame updateAllResizeZonePositions];
-                    [frame applyRoundedCornersShapeMask];
+                        // Update resize zones and shape mask
+                        [frame updateAllResizeZonePositions];
+                        [frame applyRoundedCornersShapeMask];
 
-                    [titleBar drawTitleBarComponents];
+                        [titleBar drawTitleBarComponents];
+                    }
 
                     frame = nil;
                     titleBar = nil;
                 }
                 else
                 {
-                    size = XCBMakeSize([aWindow windowRect].size.width, workareaHeight);
-                    position = XCBMakePoint([aWindow windowRect].position.x, workareaY);
-                    [aWindow maximizeToSize:size andPosition:position];
+                    if (![aWindow canResize]) {
+                        NSLog(@"[EWMH] Skipping vertical maximize for non-resizable undecorated client %u", [aWindow window]);
+                    } else {
+                        size = XCBMakeSize([aWindow windowRect].size.width, workareaHeight);
+                        position = XCBMakePoint([aWindow windowRect].position.x, workareaY);
+                        [aWindow maximizeToSize:size andPosition:position];
+                    }
                 }
 
                 [aWindow setMaximizedVertically:maxVert];
@@ -965,29 +985,39 @@
                     // Save pre-maximize rect for restore
                     [frame setOldRect:[frame windowRect]];
 
-                    /*** Use programmaticResizeToRect - fullscreen to workarea ***/
-                    XCBRect targetRect = XCBMakeRect(
-                        XCBMakePoint(workareaX, workareaY),
-                        XCBMakeSize(workareaWidth, workareaHeight));
-                    [frame programmaticResizeToRect:targetRect];
-                    [frame setIsMaximized:YES];
-                    [frame setMaximizedHorizontally:YES];
-                    [frame setMaximizedVertically:YES];
+                    // Respect client resizability: do nothing if the client is non-resizable
+                    XCBWindow *clientWin = (XCBWindow*)[frame childWindowForKey:ClientWindow];
+                    if (clientWin && ![clientWin canResize]) {
+                        NSLog(@"[EWMH] Skipping fullscreen/maximize for non-resizable client %u", [clientWin window]);
+                    } else {
+                        /*** Use programmaticResizeToRect - fullscreen to workarea ***/
+                        XCBRect targetRect = XCBMakeRect(
+                            XCBMakePoint(workareaX, workareaY),
+                            XCBMakeSize(workareaWidth, workareaHeight));
+                        [frame programmaticResizeToRect:targetRect];
+                        [frame setIsMaximized:YES];
+                        [frame setMaximizedHorizontally:YES];
+                        [frame setMaximizedVertically:YES];
 
-                    // Update resize zones and shape mask
-                    [frame updateAllResizeZonePositions];
-                    [frame applyRoundedCornersShapeMask];
+                        // Update resize zones and shape mask
+                        [frame updateAllResizeZonePositions];
+                        [frame applyRoundedCornersShapeMask];
 
-                    [titleBar drawTitleBarComponents];
+                        [titleBar drawTitleBarComponents];
+                    }
 
                     frame = nil;
                     titleBar = nil;
                 }
                 else
                 {
-                    size = XCBMakeSize(workareaWidth, workareaHeight);
-                    position = XCBMakePoint(workareaX, workareaY);
-                    [aWindow maximizeToSize:size andPosition:position];
+                    if (![aWindow canResize]) {
+                        NSLog(@"[EWMH] Skipping fullscreen for non-resizable undecorated client %u", [aWindow window]);
+                    } else {
+                        size = XCBMakeSize(workareaWidth, workareaHeight);
+                        position = XCBMakePoint(workareaX, workareaY);
+                        [aWindow maximizeToSize:size andPosition:position];
+                    }
                 }
 
                 [aWindow setFullScreen:fullscr];
