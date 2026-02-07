@@ -1164,6 +1164,16 @@
 
 - (void)resizeWindowTo70Percent:(xcb_window_t)clientWindowId {
     @try {
+        // If the window is already managed by us (already decorated or currently minimized),
+        // we must respect its existing geometry and state. Restoration from minimized state
+        // is handled precisely by XCBConnection's handleMapRequest during the map sequence.
+        XCBWindow *existingWindow = [connection windowForXCBId:clientWindowId];
+        if (existingWindow && ([existingWindow decorated] || [existingWindow isMinimized])) {
+            NSLog(@"[WindowManager] Skipping automatic resize for already-managed window %u (decorated=%d, minimized=%d)", 
+                  clientWindowId, [existingWindow decorated], [existingWindow isMinimized]);
+            return;
+        }
+
         // Get the screen dimensions
         XCBScreen *screen = [[connection screens] objectAtIndex:0];
         uint16_t screenWidth = [screen width];
@@ -1265,6 +1275,19 @@
                                      clientWindowId,
                                      XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y | 
                                      XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT,
+                                     configValues);
+                [connection flush];
+            } else if (isAtOrigin && (geom_reply->width < screenWidth) && !isDesktopWindow && !isFullscreenState) {
+                // Window starts at (0,0) but is NOT full-width. This is usually a fallback position
+                // for apps that don't specify geometry. Move it to the golden ratio position
+                // which matches where a newly created window of the same type would get mapped.
+                NSLog(@"Window %u starts at origin (0,0) but is not full-width (%u). Applying golden ratio placement to avoid x=0 default.",
+                      clientWindowId, geom_reply->width);
+                
+                uint32_t configValues[] = {goldenPosX, goldenPosY};
+                xcb_configure_window([connection connection],
+                                     clientWindowId,
+                                     XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y,
                                      configValues);
                 [connection flush];
             } else if (isDesktopWindow || isFullscreenState) {
