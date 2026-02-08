@@ -251,160 +251,32 @@ typedef NS_ENUM(NSInteger, TitleBarButtonPosition) {
     NSGradient *gradient = [[NSGradient alloc] initWithStartingColor:gradientColor1
                                                          endingColor:gradientColor2];
 
-    NSColor *borderColor = [NSColor colorWithCalibratedRed:0.4 green:0.4 blue:0.4 alpha:1.0];
-
-    // Top border color - matches titlebar top edge (slightly lighter for visual trick)
-    NSColor *topBorderColor = [NSColor colorWithCalibratedRed:0.5 green:0.5 blue:0.5 alpha:1.0];
-
-    // Bottom border color - matches titlebar bottom edge #717171
-    NSColor *bottomBorderColor = [NSColor colorWithCalibratedRed:0.443 green:0.443 blue:0.443 alpha:1.0];
-
     // Create path with appropriate corner rounding
     NSBezierPath *path = [self buttonPathForRect:rect position:position];
 
     // Fill with gradient
     [gradient drawInBezierPath:path angle:-90];
 
-    // Inner highlight - white line near top for 3D raised effect
+    // Single 1px highlight along top edge — straight line for all positions.
+    // The XCB shape mask handles visible corner rounding; highlight arcs
+    // created a brightness boundary that appeared as a circle artifact.
     NSColor *highlightColor = [NSColor colorWithCalibratedWhite:1.0 alpha:0.35];
-    NSBezierPath *highlightPath = [NSBezierPath bezierPath];
-    CGFloat highlightY = NSMaxY(rect) - 2.5;
-    [highlightPath moveToPoint:NSMakePoint(NSMinX(rect) + 2, highlightY)];
-    [highlightPath lineToPoint:NSMakePoint(NSMaxX(rect) - 2, highlightY)];
     [highlightColor setStroke];
-    [highlightPath setLineWidth:1.0];
-    [highlightPath stroke];
-
-    // Inner shadow - black line near bottom for 3D depth
-    NSColor *shadowColor = [NSColor colorWithCalibratedWhite:0.0 alpha:0.15];
-    NSBezierPath *shadowPath = [NSBezierPath bezierPath];
-    CGFloat shadowY = NSMinY(rect) + 1.5;
-    [shadowPath moveToPoint:NSMakePoint(NSMinX(rect) + 2, shadowY)];
-    [shadowPath lineToPoint:NSMakePoint(NSMaxX(rect) - 2, shadowY)];
-    [shadowColor setStroke];
-    [shadowPath setLineWidth:1.0];
-    [shadowPath stroke];
-
-    // Stroke border for interior buttons only.
-    // Edge buttons skip the rectangle stroke because it creates a visible gap
-    // between the rectangle's top edge (y=NSMaxY) and the corner arc below it.
-    // Edge button borders are drawn explicitly (edge arcs, top line, bottom line,
-    // interior side line) for seamless rounded corners.
-    if (position == TitleBarButtonPositionRightInner) {
-        [borderColor setStroke];
-        [path setLineWidth:1.0];
-        [path stroke];
-    }
-
-    // Draw top border line (replicates titlebar top edge on buttons)
-    NSBezierPath *topLine = [NSBezierPath bezierPath];
-    CGFloat radius = BUTTON_INNER_RADIUS;
-    if (position == TitleBarButtonPositionLeft) {
-        // Close button: line from after top-left arc to right edge
-        [topLine moveToPoint:NSMakePoint(1.5 + radius, NSMaxY(rect) - 0.5)];
-        [topLine lineToPoint:NSMakePoint(NSMaxX(rect), NSMaxY(rect) - 0.5)];
-    } else if (position == TitleBarButtonPositionRightInner) {
-        // Maximize button (inner right): full-width top line (no rounded corners)
-        [topLine moveToPoint:NSMakePoint(NSMinX(rect), NSMaxY(rect) - 0.5)];
-        [topLine lineToPoint:NSMakePoint(NSMaxX(rect), NSMaxY(rect) - 0.5)];
-    } else if (position == TitleBarButtonPositionRightOuter ||
-               position == TitleBarButtonPositionRightFull) {
-        // Minimize button (far right): line from left edge to before top-right arc
-        [topLine moveToPoint:NSMakePoint(NSMinX(rect), NSMaxY(rect) - 0.5)];
-        [topLine lineToPoint:NSMakePoint(NSMaxX(rect) - 1.5 - radius, NSMaxY(rect) - 0.5)];
-    }
-    if ([topLine elementCount] > 0) {
-        [topBorderColor setStroke];
-        [topLine setLineWidth:1.0];
-        [topLine stroke];
-    }
-
-    // Draw vertical divider between side-by-side buttons (right edge of inner button)
-    if (position == TitleBarButtonPositionRightInner) {
-        NSBezierPath *divider = [NSBezierPath bezierPath];
-        [divider moveToPoint:NSMakePoint(NSMaxX(rect), NSMinY(rect) + 4)];
-        [divider lineToPoint:NSMakePoint(NSMaxX(rect), NSMaxY(rect) - 4)];
-        [borderColor setStroke];
-        [divider setLineWidth:1.0];
-        [divider stroke];
-    }
-
-    // Draw outer edge borders (1px darker outline on far left/right of titlebar)
-    // Use same color as main border for consistency
-    [borderColor setStroke];
-
-    if (position == TitleBarButtonPositionLeft) {
-        // Close button: draw left edge border (far left of titlebar)
-        // Draw at x=1.5 to account for X11 window offset (positioned at x=-1)
-        NSBezierPath *leftEdge = [NSBezierPath bezierPath];
-        [leftEdge moveToPoint:NSMakePoint(1.5, NSMinY(rect))];
-        [leftEdge lineToPoint:NSMakePoint(1.5, NSMaxY(rect) - 0.5 - radius)];
-        [leftEdge appendBezierPathWithArcWithCenter:NSMakePoint(1.5 + radius, NSMaxY(rect) - 0.5 - radius)
-                                             radius:radius
-                                         startAngle:180
-                                           endAngle:90
-                                          clockwise:YES];
-        [leftEdge setLineWidth:1.0];
-        [leftEdge stroke];
-    }
-
-    // Right edge border - drawn by outermost right-side button
-    if (position == TitleBarButtonPositionRightOuter ||
-        position == TitleBarButtonPositionRightFull) {
-        // Draw right edge border
-        // Draw at NSMaxX(rect) - 1.5 to account for X11 window offset (positioned at x=-1, width += 2)
-        NSBezierPath *rightEdge = [NSBezierPath bezierPath];
-        [rightEdge moveToPoint:NSMakePoint(NSMaxX(rect) - 1.5, NSMinY(rect))];
-        [rightEdge lineToPoint:NSMakePoint(NSMaxX(rect) - 1.5, NSMaxY(rect) - 0.5 - radius)];
-        [rightEdge appendBezierPathWithArcWithCenter:NSMakePoint(NSMaxX(rect) - 1.5 - radius, NSMaxY(rect) - 0.5 - radius)
-                                              radius:radius
-                                          startAngle:0
-                                            endAngle:90];
-        [rightEdge setLineWidth:1.0];
-        [rightEdge stroke];
-    }
-
-    // Bottom border - all buttons are full height so all get bottom border
-    if (position == TitleBarButtonPositionLeft ||
-        position == TitleBarButtonPositionRightInner ||
-        position == TitleBarButtonPositionRightOuter ||
-        position == TitleBarButtonPositionRightFull) {
-        NSBezierPath *bottomLine = [NSBezierPath bezierPath];
-        [bottomLine moveToPoint:NSMakePoint(NSMinX(rect), NSMinY(rect) + 0.5)];
-        [bottomLine lineToPoint:NSMakePoint(NSMaxX(rect), NSMinY(rect) + 0.5)];
-        [bottomBorderColor setStroke];
-        [bottomLine setLineWidth:1.0];
-        [bottomLine stroke];
-    }
-
-    // Interior-side borders for edge buttons (replaces rectangle stroke's side borders)
-    // These border the edge between the button and the adjacent title area
-    if (position == TitleBarButtonPositionLeft) {
-        // Close button: right side border (facing title area)
-        NSBezierPath *rightSide = [NSBezierPath bezierPath];
-        [rightSide moveToPoint:NSMakePoint(NSMaxX(rect), NSMinY(rect))];
-        [rightSide lineToPoint:NSMakePoint(NSMaxX(rect), NSMaxY(rect))];
-        [borderColor setStroke];
-        [rightSide setLineWidth:1.0];
-        [rightSide stroke];
-    } else if (position == TitleBarButtonPositionRightOuter ||
-               position == TitleBarButtonPositionRightFull) {
-        // Minimize button: left side border (facing title/zoom area)
-        NSBezierPath *leftSide = [NSBezierPath bezierPath];
-        [leftSide moveToPoint:NSMakePoint(NSMinX(rect), NSMinY(rect))];
-        [leftSide lineToPoint:NSMakePoint(NSMinX(rect), NSMaxY(rect))];
-        [borderColor setStroke];
-        [leftSide setLineWidth:1.0];
-        [leftSide stroke];
-    }
+    NSBezierPath *highlight = [NSBezierPath bezierPath];
+    [highlight moveToPoint:NSMakePoint(NSMinX(rect), NSMaxY(rect) - 0.5)];
+    [highlight lineToPoint:NSMakePoint(NSMaxX(rect), NSMaxY(rect) - 0.5)];
+    [highlight setLineWidth:1.0];
+    [highlight stroke];
 }
 
 + (NSBezierPath *)buttonPathForRect:(NSRect)frame position:(TitleBarButtonPosition)position {
-    // All button positions use full rectangles for fill/stroke.
-    // Visible corner rounding is handled by edge border arcs in drawEdgeButtonInRect:.
+    // Use simple rectangular fills for all positions.
+    // The frame's XCB shape mask handles visible corner rounding, and the
+    // highlight arcs provide the visual corner cue.  Rounded fill paths left
+    // gaps at the corners where the Eau theme's stroked arc (radius 6, grey40)
+    // showed through as a visible circle artifact.
     NSBezierPath *path = [NSBezierPath bezierPath];
     [path appendBezierPathWithRect:frame];
-
     return path;
 }
 
