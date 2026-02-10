@@ -797,6 +797,7 @@ static xcb_visualid_t findARGBVisual(xcb_screen_t *screen, xcb_visualtype_t **ou
         XCBShape *shape = [[XCBShape alloc] initWithConnection:connection withWinId:window];
         if ([shape checkSupported]) {
             XCBGeometryReply *geometry = [self geometries];
+            if (!geometry) return;  // Window destroyed — nothing to shape
             [shape calculateDimensionsFromGeometries:geometry];
             [shape createPixmapsAndGCs];
             [shape createRoundedCornersWithTopRadius:(int)topRadius bottomRadius:(int)bottomRadius];
