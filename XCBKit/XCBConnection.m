@@ -2726,15 +2726,27 @@ static XCBConnection *sharedInstance;
     }
     
     // Handle undecorated windows (no frame parent) - these still need button grabs
-    // so we can track focus changes for _NET_ACTIVE_WINDOW
+    // so we can track focus changes for _NET_ACTIVE_WINDOW.
+    // Skip menu-type windows: GNUstep handles its own menu mouse tracking,
+    // and a synchronous button grab would freeze the pointer, preventing
+    // the menu from receiving button-release events.
     if (window && [window isKindOfClass:[XCBWindow class]] && ![window decorated])
     {
-        // Check if parent is not a frame (undecorated window)
-        XCBWindow *parent = [window parentWindow];
-        if (!parent || ![parent isKindOfClass:[XCBFrame class]])
+        NSString *wType = [window windowType];
+        EWMHService *ewmh = [EWMHService sharedInstanceWithConnection:self];
+        BOOL isMenu = [wType isEqualToString:[ewmh EWMHWMWindowTypePopupMenu]] ||
+                      [wType isEqualToString:[ewmh EWMHWMWindowTypeDropdownMenu]] ||
+                      [wType isEqualToString:[ewmh EWMHWMWindowTypeMenu]];
+        ewmh = nil;
+
+        if (!isMenu)
         {
-            [window grabButton];
-            NSLog(@"[EnterNotify] Grabbed button on undecorated window %u", [window window]);
+            XCBWindow *parent = [window parentWindow];
+            if (!parent || ![parent isKindOfClass:[XCBFrame class]])
+            {
+                [window grabButton];
+                NSLog(@"[EnterNotify] Grabbed button on undecorated window %u", [window window]);
+            }
         }
     }
 

@@ -350,6 +350,13 @@
                      watcher:self
                      forMode:NSRunLoopCommonModes];
 
+    // Menu tracking loops run in NSEventTrackingRunLoopMode — process XCB events
+    // there too so the WM can handle MapRequest for popup menu windows
+    [currentRunLoop addEvent:(void*)(uintptr_t)xcbFD
+                        type:ET_RDESC
+                     watcher:self
+                     forMode:NSEventTrackingRunLoopMode];
+
     self.xcbEventsIntegrated = YES;
 
     // Start monitoring for XCB events immediately
@@ -611,8 +618,22 @@
             // Resize window to 70% of screen size before mapping
             [self resizeWindowTo70Percent:mapRequestEvent->window];
 
-            // Let XCBConnection handle the map request normally (this creates titlebar structure)
+            // Let XCBConnection handle the map request (creates frame for managed windows)
             [connection handleMapRequest:mapRequestEvent];
+
+            // Check if handleMapRequest created a frame for this window.
+            // Unframed windows (menus, popups, tooltips, transients) only need
+            // compositor registration — skip theme, focus, and border processing.
+            XCBWindow *mappedClient = [connection windowForXCBId:mapRequestEvent->window];
+            if (!mappedClient || ![[mappedClient parentWindow] isKindOfClass:[XCBFrame class]]) {
+                NSLog(@"[WindowManager] Unframed window %u - skipping post-processing", mapRequestEvent->window);
+                if (self.compositingManager && [self.compositingManager compositingActive]) {
+                    [self.compositingManager registerWindow:mapRequestEvent->window];
+                }
+                break;
+            }
+
+            // --- Framed windows only below this point ---
 
             // Register window with compositor if active
             if (self.compositingManager && [self.compositingManager compositingActive]) {
@@ -621,14 +642,11 @@
                 NSLog(@"[HybridEventHandler] Registered client window %u", mapRequestEvent->window);
                 // Register any existing child windows so their damage events are tracked
                 [self registerChildWindowsForCompositor:mapRequestEvent->window depth:3];
-                // If the client got framed, register children of the frame too
-                XCBWindow *clientWindow = [connection windowForXCBId:mapRequestEvent->window];
-                if (clientWindow && [[clientWindow parentWindow] isKindOfClass:[XCBFrame class]]) {
-                    XCBFrame *frame = (XCBFrame *)[clientWindow parentWindow];
-                    NSLog(@"[HybridEventHandler] Registering frame window %u for client %u", [frame window], mapRequestEvent->window);
-                    [self.compositingManager registerWindow:[frame window]];
-                    [self registerChildWindowsForCompositor:[frame window] depth:3];
-                }
+                // Register children of the frame too
+                XCBFrame *frame = (XCBFrame *)[mappedClient parentWindow];
+                NSLog(@"[HybridEventHandler] Registering frame window %u for client %u", [frame window], mapRequestEvent->window);
+                [self.compositingManager registerWindow:[frame window]];
+                [self registerChildWindowsForCompositor:[frame window] depth:3];
             }
 
             // Hide borders for windows with fixed sizes (like info panels and logout)
@@ -637,13 +655,12 @@
             // Apply GSTheme immediately with no delay
             [self applyGSThemeToRecentlyMappedWindow:[NSNumber numberWithUnsignedInt:mapRequestEvent->window]];
 
-            // Fallback: Try to focus the client window if it's focusable but GSTheme wasn't applied
+            // Try to focus the client window if it's focusable
             // This ensures dialogs, alerts, sheets and other special windows get focused too
-            XCBWindow *clientWindow = [connection windowForXCBId:mapRequestEvent->window];
-            if (clientWindow && [self isWindowFocusable:clientWindow allowDesktop:NO]) {
+            if ([self isWindowFocusable:mappedClient allowDesktop:NO]) {
                 // Schedule focus after a brief delay to ensure the window is fully set up
                 [self performSelector:@selector(focusWindowAfterThemeApplied:)
-                           withObject:clientWindow
+                           withObject:mappedClient
                            afterDelay:0.1];
             }
             break;
