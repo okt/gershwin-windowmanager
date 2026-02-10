@@ -21,6 +21,9 @@
 #import "services/TitleBarSettingsService.h"
 #import "utils/XCBShape.h"
 #import <dispatch/dispatch.h>
+#import <GNUstepGUI/GSTheme.h>
+#import <AppKit/NSColor.h>
+#import <AppKit/NSGraphics.h>
 
 #import <objc/message.h> // for dynamic messaging to compositor helper
 
@@ -1181,6 +1184,19 @@ static XCBConnection *sharedInstance;
         }
     }
 
+    // Query border color from theme (e.g. Eau's controlStrokeColor), with fallback
+    uint32_t borderPixel = 0xC0C0C0;
+    GSTheme *theme = [GSTheme theme];
+    if ([theme respondsToSelector:@selector(windowFrameBorderColor)]) {
+        NSColor *borderColor = [(id)theme performSelector:@selector(windowFrameBorderColor)];
+        if (borderColor) {
+            borderColor = [borderColor colorUsingColorSpaceName:NSCalibratedRGBColorSpace];
+            CGFloat r, g, b, a;
+            [borderColor getRed:&r green:&g blue:&b alpha:&a];
+            borderPixel = ((uint8_t)(r * 255) << 16) | ((uint8_t)(g * 255) << 8) | (uint8_t)(b * 255);
+        }
+    }
+
     XCBVisual *visual = nil;
     uint32_t values[4];  // May need up to 4 values for ARGB (back_pixel, border_pixel, colormap, event_mask)
     uint32_t valueMask = XCB_CW_BACK_PIXEL | XCB_CW_EVENT_MASK;
@@ -1217,22 +1233,22 @@ static XCBConnection *sharedInstance;
                 // For 32-bit windows: back_pixel, border_pixel, event_mask, colormap
                 // XCB_CW values must be in ascending bit order: 2, 8, 2048, 8192
                 valueMask = XCB_CW_BACK_PIXEL | XCB_CW_BORDER_PIXEL | XCB_CW_EVENT_MASK | XCB_CW_COLORMAP;
-                values[0] = 0xFFC0C0C0;  // back_pixel = border color (#C0C0C0, opaque)
+                values[0] = (0xFF << 24) | borderPixel;  // back_pixel = border color (opaque)
                 values[1] = 0;  // border_pixel = transparent
                 values[2] = FRAMEMASK;  // event_mask
                 values[3] = argbColormap;  // colormap
             } else {
                 NSLog(@"[XCBConnection] No ARGB visual found, using standard 24-bit frame");
-                values[0] = 0xC0C0C0;  // border color
+                values[0] = borderPixel;  // border color
                 values[1] = FRAMEMASK;
             }
         } else {
             // Non-compositor mode: use border color background
-            values[0] = 0xC0C0C0;  // border color
+            values[0] = borderPixel;  // border color
             values[1] = FRAMEMASK;
         }
     } else {
-        values[0] = 0xC0C0C0;  // border color
+        values[0] = borderPixel;  // border color
         values[1] = FRAMEMASK;
     }
 
