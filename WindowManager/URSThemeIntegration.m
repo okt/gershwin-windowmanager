@@ -48,7 +48,6 @@ static NSInteger hoveredButtonIndex = -1;  // -1=none, 0=close, 1=mini, 2=zoom
 static const CGFloat TITLEBAR_HEIGHT = 24.0;
 static const CGFloat EDGE_BUTTON_WIDTH = 28.0;        // Close button width (left edge)
 static const CGFloat RIGHT_BUTTON_WIDTH = 28.0;       // Width for each right-side button (maximize, minimize)
-static const CGFloat BUTTON_INNER_RADIUS = 5.0;               // Matches Eau theme METRICS_TITLEBAR_BUTTON_INNER_RADIUS
 static const CGFloat ICON_STROKE = 1.5;               // Subtle icon strokes
 static const CGFloat ICON_INSET = 8.0;                // Icon inset from button edges (matches Eau theme)
 
@@ -67,7 +66,6 @@ static const CGFloat ICON_INSET = 8.0;                // Icon inset from button 
 + (xcb_visualid_t)findARGBVisualForScreen:(XCBScreen *)screen connection:(XCBConnection *)connection {
     if (!screen || !connection) return 0;
 
-    xcb_connection_t *conn = [connection connection];
     xcb_screen_t *xcbScreen = [screen screen];
     if (!xcbScreen) return 0;
 
@@ -1181,7 +1179,6 @@ typedef NS_ENUM(NSInteger, TitleBarButtonPosition) {
         [gctx saveGraphicsState];
 
         // Use GSTheme to draw titlebar decoration
-        NSRect drawRect = NSMakeRect(0, 0, titlebarSize.width, titlebarSize.height);
 
         // Check if this is a fixed-size window (hide resize but show minimize when supported)
         XCBWindow *clientWindow = [frame childWindowForKey:ClientWindow];
