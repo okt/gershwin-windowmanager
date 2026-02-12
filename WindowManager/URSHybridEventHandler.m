@@ -2054,10 +2054,10 @@
             return NO; // Click wasn't on a button, let handleButtonPress: handle it
         }
 
-        // Release the implicit grab from the button press. Use REPLAY_POINTER to match
-        // handleButtonPress: behavior — this releases the grab and replays the event,
-        // preventing a dangling grab if the window is unmapped (e.g., minimized).
-        xcb_allow_events([connection connection], XCB_ALLOW_REPLAY_POINTER, pressEvent->time);
+        // Release the implicit grab from the button press. Use ASYNC_POINTER (not
+        // REPLAY_POINTER) because the WM fully handles titlebar button actions — replaying
+        // the event would re-trigger the passive grab and fire the action a second time.
+        xcb_allow_events([connection connection], XCB_ALLOW_ASYNC_POINTER, pressEvent->time);
 
         // Find the frame that contains this titlebar
         XCBFrame *frame = (XCBFrame*)[titlebar parentWindow];
