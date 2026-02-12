@@ -1380,6 +1380,7 @@ static XCBConnection *sharedInstance;
     [frame decorateClientWindow];
     [self mapWindow:frame];
     [self registerWindow:window];
+    [window setParentWindow:frame];
     [window updateAttributes];
     [frame setScreen:[window screen]];
     [window setNormalState];
