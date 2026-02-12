@@ -398,14 +398,13 @@ typedef NS_ENUM(NSInteger, TitleBarButtonPosition) {
 }
 
 // Get icon color based on active/highlighted state
-// Returns nil for inactive windows (icons should be hidden)
 + (NSColor *)iconColorForActive:(BOOL)active highlighted:(BOOL)highlighted {
+    NSColor *color;
     if (!active) {
-        return nil;  // No icons on inactive windows
+        color = [NSColor colorWithCalibratedRed:0.55 green:0.55 blue:0.55 alpha:1.0];
+    } else {
+        color = [NSColor colorWithCalibratedRed:0.20 green:0.20 blue:0.20 alpha:1.0];
     }
-
-    // Darker icon color for active windows (0.20 - halfway between original 0.15 and 0.25)
-    NSColor *color = [NSColor colorWithCalibratedRed:0.20 green:0.20 blue:0.20 alpha:1.0];
 
     if (highlighted) {
         color = [color shadowWithLevel:0.2];
